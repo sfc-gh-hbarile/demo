@@ -146,6 +146,24 @@ The dashboard opens in your browser at `http://localhost:8501`.
 4. Results (latency, success/failure, timestamps) are collected per-query
 5. Results are saved to CSV and optionally uploaded to a Snowflake table
 
+### Query Parameter Substitution
+
+Each query execution generates **fresh random values** via Python string interpolation (`.format()`), not JDBC bind variables. This means the SQL text is unique every time:
+
+```sql
+-- What gets sent to Snowflake each time (literal values, not bind params):
+WHERE p.account_id = 847291 AND p.trade_date = '2026-03-14'
+WHERE p.account_id = 123456 AND p.trade_date = '2026-04-22'
+```
+
+**Why string interpolation instead of bind variables?**
+
+- **Defeats Snowflake's compilation cache** — The compilation cache keys on exact SQL text. Bind variables (`?`) would let subsequent executions reuse the compiled plan. Unique SQL strings force a fresh compile every query, creating a worst-case scenario for the benchmark.
+- **Defeats the result cache** — Combined with `USE_CACHED_RESULT=false`, this ensures every query does real work against storage.
+- **More conservative test** — If Interactive Tables still outperform with forced recompilation on every query, it's a stronger proof point than allowing cache hits.
+
+**If you want a more production-realistic test** (where compilation cache hits are expected), you can modify `benchmark_driver.py` to use JDBC prepared statements with bind parameters. This will show even better Interactive Table performance since the compile overhead is eliminated.
+
 ### Query Tagging
 
 All benchmark queries are tagged: `IT_BENCH_{warehouse}_{concurrency}_{run_id}`
