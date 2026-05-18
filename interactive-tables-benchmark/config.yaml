@@ -1,0 +1,126 @@
+# =============================================================================
+# Interactive Tables Benchmark Configuration
+# =============================================================================
+# Edit this file to match YOUR Snowflake account, warehouses, and tables.
+# The benchmark will run the queries below at increasing concurrency levels
+# against both your standard and interactive warehouses.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Connection (can also be set via environment variables)
+# ---------------------------------------------------------------------------
+connection:
+  # account_url: "your-org-your-account.snowflakecomputing.com"  # or set SNOWFLAKE_ACCOUNT_URL
+  # username: "your_user"                                         # or set SNOWFLAKE_USER
+  # role: "SYSADMIN"                                              # or set SNOWFLAKE_ROLE
+  database: "YOUR_DATABASE"
+  schema: "YOUR_SCHEMA"
+
+# ---------------------------------------------------------------------------
+# Warehouses
+# ---------------------------------------------------------------------------
+warehouses:
+  standard: "YOUR_STANDARD_WH"       # Standard XS warehouse (for comparison)
+  interactive: "YOUR_INTERACTIVE_WH"  # Interactive warehouse (always-on)
+
+# ---------------------------------------------------------------------------
+# Benchmark Parameters
+# ---------------------------------------------------------------------------
+benchmark:
+  concurrency_levels: [10, 25, 50, 75, 100]  # Concurrent threads per level
+  duration_seconds: 120                        # How long each level runs
+  warmup_queries: 20                           # Warmup queries before timed run
+  point_lookups_only: true                     # true = skip aggregation queries (recommended for first run)
+
+# ---------------------------------------------------------------------------
+# Queries
+# ---------------------------------------------------------------------------
+# Define your own queries here. Each query needs:
+#   - name: identifier for the query type
+#   - sql: the SQL template (use {param_name} for randomized parameters)
+#   - weight: relative frequency (weights are normalized to 100%)
+#   - category: "point_lookup" or "aggregation"
+#       - point_lookup: runs on both warehouses in all modes
+#       - aggregation: skipped when point_lookups_only=true
+#
+# Available parameter placeholders (auto-generated each execution):
+#   {account_id}   - random int from 1 to params.max_account_id
+#   {security_id}  - random int from 1 to params.max_security_id
+#   {trade_date}   - random date within params.trade_date_range_days of today
+#   {start_date}   - same as trade_date (alias)
+#   {end_date}     - trade_date + 30 days
+# ---------------------------------------------------------------------------
+
+queries:
+  - name: "POINT_LOOKUP"
+    category: "point_lookup"
+    weight: 70
+    sql: |
+      SELECT
+          p.position_id, p.account_id, p.security_id, p.trade_date,
+          p.quantity, p.market_value, p.cost_basis, p.unrealized_pnl,
+          s.security_name, s.asset_class, s.sector, s.cusip
+      FROM {positions_table} p
+      JOIN {securities_table} s ON p.security_id = s.security_id
+      WHERE p.account_id = {account_id}
+        AND p.trade_date = '{trade_date}'
+      ORDER BY p.market_value DESC
+      LIMIT 200
+
+  # ⚠️  OPTIONAL: Aggregation queries WILL timeout on Interactive Warehouses
+  # (5-second SLA enforcement). Include these ONLY if you want to demonstrate
+  # the SLA boundary behavior. They are skipped when point_lookups_only=true.
+  # To include them, set point_lookups_only: false above.
+  - name: "PORTFOLIO_AGG"
+    category: "aggregation"
+    weight: 30
+    sql: |
+      SELECT
+          s.asset_class,
+          s.sector,
+          COUNT(*) AS position_count,
+          SUM(p.market_value) AS total_market_value,
+          SUM(p.unrealized_pnl) AS total_pnl,
+          AVG(p.market_value) AS avg_position_size
+      FROM {positions_table} p
+      JOIN {securities_table} s ON p.security_id = s.security_id
+      WHERE p.account_id = {account_id}
+      GROUP BY s.asset_class, s.sector
+      ORDER BY total_market_value DESC
+
+# ---------------------------------------------------------------------------
+# Table Mappings
+# ---------------------------------------------------------------------------
+# Map logical names to your actual table names.
+# Standard tables are used with the standard warehouse.
+# Interactive tables are used with the interactive warehouse.
+# ---------------------------------------------------------------------------
+
+tables:
+  standard:
+    positions_table: "POSITIONS"
+    securities_table: "SECURITIES"
+    accounts_table: "ACCOUNTS"
+  interactive:
+    positions_table: "POSITIONS_INTERACTIVE"
+    securities_table: "SECURITIES_INTERACTIVE"
+    accounts_table: "ACCOUNTS"
+
+# ---------------------------------------------------------------------------
+# Random Parameter Ranges
+# ---------------------------------------------------------------------------
+# Adjust these to match YOUR data distribution.
+# ---------------------------------------------------------------------------
+
+params:
+  max_account_id: 1000000      # Random account_id range: 1..this value
+  max_security_id: 100000      # Random security_id range: 1..this value
+  trade_date_range_days: 90    # Random trade_date within last N days
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+output:
+  results_csv: "benchmark_results.csv"
+  upload_to_snowflake: true
+  results_table: "BENCHMARK_RESULTS"

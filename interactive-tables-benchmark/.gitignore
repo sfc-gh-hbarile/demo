@@ -1,0 +1,17 @@
+# Benchmark artifacts (generated at runtime)
+benchmark_results.csv
+*.jar
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment / secrets (NEVER commit these)
+.env
+.env.*
+*.token
+
+# OS
+.DS_Store
