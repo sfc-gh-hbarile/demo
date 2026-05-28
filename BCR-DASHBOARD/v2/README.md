@@ -4,6 +4,19 @@ A **Streamlit in Snowflake** app that automatically tracks Snowflake Behavior Ch
 
 ---
 
+## Screenshots
+
+### Dashboard — Bundle status, EBD countdown, assessment progress
+![Dashboard](screenshots/dashboard.png)
+
+### Detection Lab — Before/After from docs, COE Impact Brief, detection SQL
+![Detection Lab](screenshots/detection-lab.png)
+
+### Assessment — Editable tracking table with color-coded status
+![Assessment](screenshots/assessment.png)
+
+---
+
 ## What It Does
 
 Snowflake releases BCR bundles quarterly. Each bundle contains changes that will eventually become permanently enforced. Without a structured process, teams discover breaking changes reactively — in production.
