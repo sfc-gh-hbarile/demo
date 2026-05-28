@@ -1,6 +1,6 @@
 # Snowflake BCR Tracker
 
-A **Streamlit in Snowflake** app that automatically tracks Snowflake Behavior Change Releases (BCRs) and helps your platform team assess, test, and sign off on upcoming changes before they enforce — no manual maintenance required.
+A **Streamlit in Snowflake** app that automatically tracks Snowflake Behavior Change Releases (BCRs) and helps your platform team assess, test, and sign off on upcoming changes before they enforce .
 
 ---
 
