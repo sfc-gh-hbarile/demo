@@ -539,7 +539,7 @@ def sync_bundles(session) -> str:
 
     try:
         enrich = session.sql(
-            "CALL BCR_TRACKER_DB.TRACKING.ENRICH_BCR_DESCRIPTIONS(30)"
+            "CALL BCR_TRACKER_DB.TRACKING.ENRICH_BCR_DESCRIPTIONS(50, FALSE)"
         ).collect()[0][0]
         results.append(f"Enrichment: {enrich}")
     except Exception as e:
