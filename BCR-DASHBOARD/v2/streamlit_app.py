@@ -1066,16 +1066,16 @@ elif page == "🔬 Detection Lab":
                     if st.button("💾 Save result + note", key="save_result"):
                         try:
                             summary = f"{affected} rows matched in {window_label}"
-                            if run_note.strip():
-                                summary += f" | Note: {run_note.strip()}"
                             if not result_df.empty and "QUERY_TEXT" in result_df.columns:
                                 examples = result_df["QUERY_TEXT"].dropna().head(3).str[:200].tolist()
                                 summary += " | Examples: " + " /// ".join(examples)
                             session.sql(f"""
                                 INSERT INTO {DB}.BCR_DETECTION_RESULTS
-                                    (BCR_ID, AFFECTED_COUNT, SIGNAL_SUMMARY, RUN_BY)
-                                VALUES (?, ?, ?, CURRENT_USER())
-                            """, [sel_bcr, affected, summary[:2000]]).collect()
+                                    (BCR_ID, AFFECTED_COUNT, SIGNAL_SUMMARY, NOTES, DETECTION_SQL, RUN_BY)
+                                VALUES (?, ?, ?, ?, ?, CURRENT_USER())
+                            """, [sel_bcr, affected, summary[:2000],
+                                  run_note.strip() or None,
+                                  run_sql]).collect()
                             st.success("Result saved to Detection History.")
                         except Exception as e:
                             st.error(f"Could not save: {e}")
@@ -1113,18 +1113,41 @@ elif page == "🔬 Detection Lab":
 
     # ── Detection History ──────────────────────────────────────────────────────
     st.subheader("Detection History")
-    st.caption("Each time you run a detection and save the result, it is recorded here.")
+    st.caption("Each saved run shows the result count, your notes, and the exact SQL that was executed.")
     try:
         hist = session.sql(f"""
-            SELECT RUN_AT, AFFECTED_COUNT, SIGNAL_SUMMARY, RUN_BY
+            SELECT RESULT_ID, RUN_AT, AFFECTED_COUNT, NOTES, SIGNAL_SUMMARY, DETECTION_SQL, RUN_BY
             FROM {DB}.BCR_DETECTION_RESULTS
             WHERE BCR_ID = ?
-            ORDER BY RUN_AT DESC LIMIT 10
+            ORDER BY RUN_AT DESC LIMIT 20
         """, [sel_bcr]).to_pandas()
         if hist.empty:
             st.caption("No detection runs saved yet for this BCR.")
         else:
-            st.dataframe(hist, use_container_width=True, hide_index=True)
+            for _, row in hist.iterrows():
+                affected_n = int(row["AFFECTED_COUNT"]) if pd.notna(row["AFFECTED_COUNT"]) else 0
+                result_color = "#e74c3c" if affected_n > 0 else "#27ae60"
+                result_label = f"⚠️ {affected_n} rows matched" if affected_n > 0 else "✅ 0 rows — unaffected"
+                run_at = str(row["RUN_AT"])[:16] if pd.notna(row["RUN_AT"]) else ""
+                run_by = str(row["RUN_BY"]) if pd.notna(row["RUN_BY"]) else ""
+                notes  = str(row["NOTES"]) if pd.notna(row["NOTES"]) else ""
+
+                with st.expander(
+                    f"{run_at}  ·  {result_label}  ·  {run_by}"
+                    + (f"  ·  📝 {notes[:60]}{'…' if len(notes) > 60 else ''}" if notes else ""),
+                    expanded=False,
+                ):
+                    if notes:
+                        st.markdown(f"**📝 Notes:** {notes}")
+                    sig = str(row["SIGNAL_SUMMARY"]) if pd.notna(row["SIGNAL_SUMMARY"]) else ""
+                    if sig:
+                        st.caption(f"Summary: {sig[:300]}")
+                    sql_ran = str(row["DETECTION_SQL"]) if pd.notna(row["DETECTION_SQL"]) else ""
+                    if sql_ran:
+                        st.markdown("**SQL that was executed:**")
+                        st.code(sql_ran, language="sql")
+                    else:
+                        st.caption("SQL not recorded for this run.")
     except Exception as e:
         st.warning(f"Could not load history: {e}")
 
