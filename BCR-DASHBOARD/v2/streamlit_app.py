@@ -764,51 +764,16 @@ elif page == "🔬 Detection Lab":
     secs = parse_bcr_sections(desc_display)
 
     if secs["before"] or secs["after"]:
-        # Strip code fences from the prose text — code blocks are already shown
-        # separately in the "SQL examples" section below, so rendering them here
-        # too would duplicate them.
-        def prose_only(text: str) -> str:
-            return re.sub(r'```(?:[a-zA-Z]*)?\s*\n?.*?```', '', text,
-                          flags=re.DOTALL).strip()
+        # Full-width collapsible expanders — code blocks stay inline for context
+        with st.expander("⬛ Before the change", expanded=True):
+            st.markdown(secs["before"] or "_Not available — run Enrich Descriptions in Settings._")
 
-        bc, ac = st.columns(2)
-        with bc:
-            st.markdown(
-                "<div style='background:#fff3f3;border-left:4px solid #e74c3c;"
-                "padding:8px 12px;border-radius:0 4px 4px 0;margin-bottom:6px'>"
-                "<b style='color:#e74c3c;font-size:13px'>⬛ Before the change</b></div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(prose_only(secs["before"]) or "_Not available — run Enrich Descriptions in Settings._")
-        with ac:
-            st.markdown(
-                "<div style='background:#f0fff4;border-left:4px solid #27ae60;"
-                "padding:8px 12px;border-radius:0 4px 4px 0;margin-bottom:6px'>"
-                "<b style='color:#27ae60;font-size:13px'>✅ After the change</b></div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(prose_only(secs["after"]) or "_Not available — run Enrich Descriptions in Settings._")
+        with st.expander("✅ After the change", expanded=True):
+            st.markdown(secs["after"] or "_Not available — run Enrich Descriptions in Settings._")
 
         if secs["what_to_do"]:
-            st.markdown(
-                "<div style='background:#fff8e1;border-left:4px solid #f39c12;"
-                "padding:8px 12px;border-radius:0 4px 4px 0;margin:8px 0 6px'>"
-                "<b style='color:#e67e22;font-size:13px'>🔧 What you need to do</b></div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(secs["what_to_do"])
-
-        if secs["code_examples"]:
-            st.markdown(
-                "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
-                "padding:8px 12px;border-radius:0 4px 4px 0;margin:8px 0 6px'>"
-                "<b style='color:#2980b9;font-size:13px'>📋 SQL examples from Snowflake docs</b>"
-                "<span style='color:#666;font-size:11px;margin-left:8px'>"
-                "— these are the exact patterns affected by this change</span></div>",
-                unsafe_allow_html=True,
-            )
-            for ex in secs["code_examples"]:
-                st.code(ex.strip(), language="sql")
+            with st.expander("🔧 What you need to do", expanded=True):
+                st.markdown(secs["what_to_do"])
 
     elif not desc_display or desc_is_polluted(desc_display):
         st.warning(
