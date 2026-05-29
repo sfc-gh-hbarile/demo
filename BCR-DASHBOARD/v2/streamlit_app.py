@@ -764,6 +764,13 @@ elif page == "🔬 Detection Lab":
     secs = parse_bcr_sections(desc_display)
 
     if secs["before"] or secs["after"]:
+        # Strip code fences from the prose text — code blocks are already shown
+        # separately in the "SQL examples" section below, so rendering them here
+        # too would duplicate them.
+        def prose_only(text: str) -> str:
+            return re.sub(r'```(?:[a-zA-Z]*)?\s*\n?.*?```', '', text,
+                          flags=re.DOTALL).strip()
+
         bc, ac = st.columns(2)
         with bc:
             st.markdown(
@@ -772,7 +779,7 @@ elif page == "🔬 Detection Lab":
                 "<b style='color:#e74c3c;font-size:13px'>⬛ Before the change</b></div>",
                 unsafe_allow_html=True,
             )
-            st.markdown(secs["before"] or "_Not available — run Enrich Descriptions in Settings._")
+            st.markdown(prose_only(secs["before"]) or "_Not available — run Enrich Descriptions in Settings._")
         with ac:
             st.markdown(
                 "<div style='background:#f0fff4;border-left:4px solid #27ae60;"
@@ -780,7 +787,7 @@ elif page == "🔬 Detection Lab":
                 "<b style='color:#27ae60;font-size:13px'>✅ After the change</b></div>",
                 unsafe_allow_html=True,
             )
-            st.markdown(secs["after"] or "_Not available — run Enrich Descriptions in Settings._")
+            st.markdown(prose_only(secs["after"]) or "_Not available — run Enrich Descriptions in Settings._")
 
         if secs["what_to_do"]:
             st.markdown(
