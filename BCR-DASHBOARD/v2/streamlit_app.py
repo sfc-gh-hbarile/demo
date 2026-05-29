@@ -121,12 +121,9 @@ def parse_bcr_sections(description: str) -> dict:
     Extract structured sections from a BCR description.
     Preserves newlines and markdown so content renders correctly.
     Returns dict with keys: before, after, what_to_do, code_examples.
-
-    The "What you need to do" section often contains the exact SQL pattern
-    that broke — that's the highest-quality signal for detection queries.
     """
     if not description:
-        return {"before": "", "after": "", "what_to_do": "", "code_examples": []}
+        return {"before": "", "after": "", "what_to_do": "", "code_examples": [], "sql_functions": []}
 
     # Strip inline HTML but PRESERVE newlines — collapsing to spaces loses
     # bullet lists, code blocks and section structure
@@ -140,13 +137,46 @@ def parse_bcr_sections(description: str) -> dict:
     after      = extract(r'After the change[:\s]+(.*?)(?=What you need to do|What to do|$)', clean)
     what_to_do = extract(r'What you need to do[:\s]+(.*?)$', clean)
 
-    # Extract ALL code blocks (``` ... ```) from the full description
-    # These are the concrete SQL patterns Snowflake says will be affected
-    code_examples = re.findall(r'```(?:sql)?\s*\n?(.*?)```', description, re.DOTALL | re.IGNORECASE)
-    code_examples = [c.strip() for c in code_examples if c.strip() and len(c.strip()) > 10]
+    # ── Code block extraction — multiple formats ──────────────────────────────
+    code_examples = []
 
-    # Also extract inline backtick SQL references from "What you need to do"
-    # e.g. `SELECT TO_CHAR(...)` — these signal the function to search for
+    # 1. Fenced code blocks ``` ... ``` (with or without language tag)
+    fenced = re.findall(r'```(?:[a-zA-Z]*)?\s*\n?(.*?)```', description, re.DOTALL)
+    code_examples += [c.strip() for c in fenced if c.strip() and len(c.strip()) > 10]
+
+    # 2. 4-space or tab indented code blocks (common in older Snowflake docs)
+    if not code_examples:
+        indented_blocks = re.findall(
+            r'(?:(?:^|\n)(?:    |\t)[^\n]+)+', description, re.MULTILINE
+        )
+        code_examples += [
+            re.sub(r'^(?:    |\t)', '', b, flags=re.MULTILINE).strip()
+            for b in indented_blocks
+            if len(b.strip()) > 15 and any(
+                kw in b.upper() for kw in ("SELECT", "INSERT", "UPDATE", "CREATE", "ALTER", "DROP", "WITH", "FROM")
+            )
+        ]
+
+    # 3. Admonition / note blocks (:::note, :::tip etc.) that contain SQL
+    admonition_sql = re.findall(
+        r':::(?:note|tip|warning|caution)[^\n]*\n(.*?):::', description, re.DOTALL | re.IGNORECASE
+    )
+    for block in admonition_sql:
+        inner = block.strip()
+        if any(kw in inner.upper() for kw in ("SELECT", "CREATE", "ALTER", "DROP")):
+            code_examples.append(inner)
+
+    # Deduplicate, cap at 8
+    seen = set()
+    unique_examples = []
+    for ex in code_examples:
+        key = ex[:80]
+        if key not in seen:
+            seen.add(key)
+            unique_examples.append(ex)
+    code_examples = unique_examples[:8]
+
+    # Identify SQL function keywords for detection hints
     sql_functions = re.findall(
         r'\b(TO_CHAR|TO_DATE|TO_TIMESTAMP|JOIN\s+\w+\s+USING|COPY_HISTORY|'
         r'METERING_HISTORY|ALERT_HISTORY|SHOW\s+\w+|GRANT\s+\w+)\b',
@@ -158,7 +188,7 @@ def parse_bcr_sections(description: str) -> dict:
         "before":        before[:800],
         "after":         after[:900],
         "what_to_do":    what_to_do[:1000],
-        "code_examples": code_examples[:4],
+        "code_examples": code_examples,
         "sql_functions": list(dict.fromkeys(f.strip() for f in sql_functions))[:5],
     }
 
@@ -705,7 +735,14 @@ elif page == "🔬 Detection Lab":
             st.markdown(secs["what_to_do"])
 
         if secs["code_examples"]:
-            st.markdown("**📋 SQL examples from Snowflake docs**")
+            st.markdown(
+                "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
+                "padding:8px 12px;border-radius:0 4px 4px 0;margin:8px 0 6px'>"
+                "<b style='color:#2980b9;font-size:13px'>📋 SQL examples from Snowflake docs</b>"
+                "<span style='color:#666;font-size:11px;margin-left:8px'>"
+                "— these are the exact patterns affected by this change</span></div>",
+                unsafe_allow_html=True,
+            )
             for ex in secs["code_examples"]:
                 st.code(ex.strip(), language="sql")
 
@@ -716,11 +753,71 @@ elif page == "🔬 Detection Lab":
             + "Run **Settings → Backfill Empty Descriptions** to fetch content."
         )
 
+    # ── Cortex Code Prompt ────────────────────────────────────────────────────
+    # Shown OPEN, right after the change description.
+    # The Cortex Code sidebar in Snowsight has full account context (schema,
+    # ACCOUNT_USAGE, INFORMATION_SCHEMA) — it generates far more precise
+    # detection SQL than any generic query can.
+    st.divider()
+    st.markdown(
+        "<div style='background:#f8f4ff;border-left:4px solid #8e44ad;"
+        "padding:10px 14px;border-radius:0 6px 6px 0;margin-bottom:8px'>"
+        "<b style='color:#8e44ad;font-size:14px'>✦ Cortex Code Prompt</b>"
+        "<span style='color:#666;font-size:12px;margin-left:10px'>"
+        "Ready to use — copy and paste into the Cortex Code sidebar in Snowsight</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "**How to use:**  \n"
+        "1. Copy the prompt below  \n"
+        "2. Open any Snowsight worksheet → click **✦ Cortex Code** (top-right corner)  \n"
+        "3. Paste the prompt — Cortex Code has access to your account's schema, "
+        "INFORMATION_SCHEMA and ACCOUNT_USAGE and will generate a targeted detection query  \n"
+        "4. Paste the resulting SQL into the **Detection Query** editor below → **Save** → **Run**"
+    )
+
+    # Build the prompt — always include all available context
+    cortex_prompt_text = (
+        f"I need to check if my Snowflake account is affected by a BCR "
+        f"(Behavior Change Release) and write a detection query.\n\n"
+        f"BCR: {title_display}\n"
+        f"Category: {category}\n"
+        f"Enforcement date (EBD): {ebd or 'TBD'}\n"
+        f"Impact level: {impact}\n"
+    )
+    if secs.get("before"):
+        cortex_prompt_text += f"\n## BEFORE the change (current behavior):\n{secs['before']}\n"
+    if secs.get("after"):
+        cortex_prompt_text += f"\n## AFTER the change (new behavior after enforcement):\n{secs['after']}\n"
+    if secs.get("what_to_do"):
+        cortex_prompt_text += f"\n## Snowflake's guidance — what you need to do:\n{secs['what_to_do']}\n"
+    if secs.get("code_examples"):
+        cortex_prompt_text += f"\n## SQL examples from Snowflake docs (the exact patterns affected):\n"
+        for i, ex in enumerate(secs["code_examples"], 1):
+            cortex_prompt_text += f"\nExample {i}:\n```sql\n{ex}\n```\n"
+    elif desc_display and not secs.get("before"):
+        # Fallback: include raw description if structured parse got nothing
+        cortex_prompt_text += f"\n## BCR description:\n{desc_display[:1500]}\n"
+
+    cortex_prompt_text += (
+        "\n## Please do the following:\n"
+        "1. Based on the change description and SQL examples above, write a precise SQL query "
+        "against SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY to find queries in the last 7 days "
+        "that match the affected pattern\n"
+        "2. If QUERY_HISTORY is not the right surface for this BCR (e.g. it involves a "
+        "configuration change, new column in SHOW output, or schema-level object change), "
+        "identify the correct ACCOUNT_USAGE view or INFORMATION_SCHEMA table to query instead\n"
+        "3. Write a second query that counts affected vs total queries to estimate blast radius percentage\n"
+        "4. Note any INFORMATION_SCHEMA views or objects I should inspect to confirm exposure"
+    )
+
+    st.code(cortex_prompt_text, language=None)
+
     st.divider()
 
     # ── COE Impact Brief ──────────────────────────────────────────────────────
     # Persisted to BCR_ASSESSMENTS.COE_BRIEF — survives navigation and sessions.
-    # Only needs to be generated once; stored as JSON in the database.
     st.subheader("COE Impact Brief")
 
     # Load from DB on first render; fall back to session cache on re-render
@@ -737,7 +834,7 @@ elif page == "🔬 Detection Lab":
             else:
                 st.session_state[brief_key] = None
         except Exception:
-            st.session_state[brief_key] = None  # column may not exist on older install
+            st.session_state[brief_key] = None
 
     brief = st.session_state.get(brief_key)
 
@@ -761,7 +858,6 @@ elif page == "🔬 Detection Lab":
             except Exception:
                 pass
             st.rerun()
-
         st.markdown("")
         if brief.get("PLAIN_ENGLISH"):
             st.markdown(f"**📌 What is changing:** {brief['PLAIN_ENGLISH']}")
@@ -779,9 +875,8 @@ elif page == "🔬 Detection Lab":
             st.info(f"**📋 Snowflake diagnostic steps:**\n\n{diag}")
     else:
         st.caption(
-            "A structured impact brief for this BCR: plain-English explanation, "
-            "affected-if / safe-if conditions, and recommended action. "
-            "Generated once and saved to the database — available to your whole team."
+            "A structured impact brief: plain-English explanation, affected-if / safe-if, "
+            "and recommended action. Generated once and saved to the database."
         )
         if st.button("Generate COE Impact Brief", type="primary", key="gen_brief"):
             coe_prompt = (
@@ -794,11 +889,11 @@ elif page == "🔬 Detection Lab":
                 f"Full description from Snowflake docs:\n{desc_display or title_display}\n\n"
                 f"Generate a COE impact brief in EXACTLY this key: value format, one per line:\n"
                 f"PLAIN_ENGLISH: [1-2 sentences — what Snowflake is changing, no jargon]\n"
-                f"AFFECTED_IF: [specific condition — what exact query pattern, workload, or config means you are impacted]\n"
+                f"AFFECTED_IF: [specific condition — exact query pattern, workload, or config that means you are impacted]\n"
                 f"SAFE_IF: [when this change has zero impact on your account]\n"
                 f"ACTION: [the single most important concrete action a DBA should take before the EBD]\n"
                 f"PRIORITY: [HIGH / MEDIUM / LOW based on blast radius and likelihood of impact]\n"
-                f"SNOWFLAKE_DIAGNOSTIC: [copy the 'Suggested diagnostic steps' or 'Customer readiness' text from the description above if present, otherwise write NONE]"
+                f"SNOWFLAKE_DIAGNOSTIC: [copy the Suggested diagnostic steps or Customer readiness text from the description above if present, otherwise write NONE]"
             )
             with st.spinner("Generating COE Impact Brief…"):
                 try:
@@ -820,126 +915,102 @@ elif page == "🔬 Detection Lab":
                                 [_json.dumps(parsed), sel_bcr],
                             ).collect()
                         except Exception:
-                            pass  # safe — column added in v2.1; older installs skip
+                            pass
                         st.rerun()
                 except Exception as e:
                     st.error(f"Cortex error: {e}")
 
     st.divider()
 
-    # ── Detection ─────────────────────────────────────────────────────────────
-    st.subheader("Detection")
+    # ── Detection Query ───────────────────────────────────────────────────────
+    st.subheader("Detection Query")
+    st.markdown(
+        "After running the Cortex Code prompt above, **paste the generated SQL here**. "
+        "Save it to record your detection approach for this BCR, then run it to validate "
+        "against your account. Approved queries are visible to your whole team."
+    )
 
-    # Time window — applied to all queries
+    # Query time window
     window_label = st.radio(
         "Query window",
         ["Last 1 day", "Last 7 days", "Last 30 days"],
         index=1,
         horizontal=True,
-        help="Limits QUERY_HISTORY lookback. Use 1 day on large accounts to avoid scanning millions of rows.",
+        help="Limits QUERY_HISTORY lookback. The window is applied when you click Run.",
     )
     days = {"Last 1 day": 1, "Last 7 days": 7, "Last 30 days": 30}[window_label]
 
-    # Determine best detection SQL to pre-load:
-    # Priority: 1) saved query from DB, 2) pattern built from docs SQL examples, 3) blank
-    patterns = secs.get("sql_functions", [])
-    if not patterns and secs.get("code_examples"):
-        first_line = secs["code_examples"][0].split("\n")[0]
-        tok = re.search(r"\b([A-Z_]{3,})\s*[\(\s]", first_line, re.IGNORECASE)
-        if tok:
-            patterns = [tok.group(1).upper()]
-
-    docs_sql = ""
-    if patterns:
-        ilike_clauses = "\n    OR ".join(
-            f"QUERY_TEXT ILIKE '%{p.split()[0]}%'" for p in patterns
-        )
-        docs_sql = (
-            f"-- Detection built from SQL patterns identified in Snowflake's docs for this BCR\n"
-            f"-- Patterns: {', '.join(patterns)}\n"
-            f"-- Review the ILIKE conditions — adjust or add patterns if needed\n\n"
-            f"SELECT QUERY_ID, QUERY_TEXT, START_TIME, USER_NAME, WAREHOUSE_NAME\n"
-            f"FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY\n"
-            f"WHERE (\n    {ilike_clauses}\n)\n"
-            f"  AND START_TIME >= DATEADD('day', -{days}, CURRENT_DATE())\n"
-            f"  AND EXECUTION_STATUS = 'SUCCESS'\n"
-            f"ORDER BY START_TIME DESC\n"
-            f"LIMIT 200;"
-        )
-
+    # Pre-load: saved query from DB only — never auto-generate ILIKE
     if sql_key not in st.session_state:
         if dq_row is not None and pd.notna(dq_row.get("DETECTION_SQL")):
             st.session_state[sql_key] = dq_row["DETECTION_SQL"]
-        elif docs_sql:
-            st.session_state[sql_key] = docs_sql
         else:
             st.session_state[sql_key] = ""
 
-    # Source indicator
+    if st.session_state.pop("_cortex_ok", False):
+        st.success("Query updated.")
+
+    # Status banner
     if dq_row is not None and pd.notna(dq_row.get("DETECTION_SQL")):
-        src_label = "Saved query"
-        src_color = "#27ae60"
-        src_note  = f"Source: `{dq_row.get('GENERATED_BY', 'manual')}` · {'✅ Approved' if dq_row.get('APPROVED') else '❌ Not yet approved'}"
-    elif docs_sql:
-        src_label = f"Built from docs patterns: {', '.join(patterns)}"
-        src_color = "#2980b9"
-        src_note  = "Review the ILIKE pattern — it is derived from the SQL examples above. Adjust if needed."
+        approved = dq_row.get("APPROVED", False)
+        src      = dq_row.get("GENERATED_BY", "manual")
+        badge_c  = "#27ae60" if approved else "#f39c12"
+        badge_t  = "✅ Approved" if approved else "⏳ Saved — not yet approved"
+        st.markdown(
+            f"<div style='background:#f8f9fa;border-left:3px solid {badge_c};"
+            f"padding:6px 12px;border-radius:0 4px 4px 0;font-size:12px'>"
+            f"<b>{badge_t}</b> &nbsp;·&nbsp; source: <code>{src}</code>"
+            + (f" &nbsp;·&nbsp; approved by: <code>{dq_row['APPROVED_BY']}</code>" if dq_row.get("APPROVED_BY") else "")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
     else:
-        src_label = "No patterns found in docs — write your own detection query below"
-        src_color = "#95a5a6"
-        src_note  = "This BCR may involve a configuration or object change rather than a query syntax change. See the Cortex Code prompt below."
+        st.caption("No detection query saved yet for this BCR. Paste one from Cortex Code above.")
 
-    st.markdown(
-        f"<div style='background:#f8f9fa;border-left:3px solid {src_color};"
-        f"padding:6px 12px;border-radius:0 4px 4px 0;margin-bottom:2px;font-size:12px'>"
-        f"<b>{src_label}</b></div>",
-        unsafe_allow_html=True,
-    )
-    st.caption(src_note)
-
-    if docs_sql and (dq_row is None or not pd.notna(dq_row.get("DETECTION_SQL"))):
-        if st.button("⟳ Reset to docs patterns", key="reload_docs",
-                     help="Resets the editor to the pattern-based query from Snowflake's docs"):
-            st.session_state[sql_key] = docs_sql
-            st.rerun()
-
-    # SQL editor
     current_sql = st.text_area(
         "Detection SQL",
         key=sql_key,
-        height=220,
+        height=240,
         label_visibility="collapsed",
         placeholder=(
-            "Write a SELECT query against SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY "
-            "or INFORMATION_SCHEMA to detect affected queries or objects…"
+            "Paste the SQL generated by Cortex Code here.\n\n"
+            "Example:\nSELECT QUERY_ID, QUERY_TEXT, START_TIME, USER_NAME\n"
+            "FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY\n"
+            "WHERE QUERY_TEXT ILIKE '%TO_CHAR%'\n"
+            "  AND START_TIME >= DATEADD('day', -7, CURRENT_DATE())\n"
+            "LIMIT 200;"
         ),
     )
 
-    # Save / Approve / Run
     sa1, sa2, sa3 = st.columns(3)
     with sa1:
-        if st.button("💾 Save", use_container_width=True):
-            try:
-                if dq_row is None:
-                    session.sql(f"""
-                        INSERT INTO {DB}.BCR_DETECTION_QUERIES
-                            (BCR_ID, DETECTION_SQL, GENERATED_BY, APPROVED)
-                        SELECT ?, ?, 'manual', FALSE
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM {DB}.BCR_DETECTION_QUERIES WHERE BCR_ID = ?
-                        )""", [sel_bcr, current_sql, sel_bcr]).collect()
-                else:
-                    session.sql(f"""
-                        UPDATE {DB}.BCR_DETECTION_QUERIES
-                        SET DETECTION_SQL = ?, GENERATED_BY = 'manual'
-                        WHERE BCR_ID = ?""", [current_sql, sel_bcr]).collect()
-                load_detection_queries.clear()
-                st.success("Saved.")
-            except Exception as e:
-                st.error(f"Save failed: {e}")
+        if st.button("💾 Save Query", use_container_width=True,
+                     help="Save this SQL — it will persist across sessions and be visible to your team"):
+            if not current_sql.strip():
+                st.warning("Nothing to save — paste a query first.")
+            else:
+                try:
+                    if dq_row is None:
+                        session.sql(f"""
+                            INSERT INTO {DB}.BCR_DETECTION_QUERIES
+                                (BCR_ID, DETECTION_SQL, GENERATED_BY, APPROVED)
+                            SELECT ?, ?, 'cortex_code', FALSE
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM {DB}.BCR_DETECTION_QUERIES WHERE BCR_ID = ?
+                            )""", [sel_bcr, current_sql, sel_bcr]).collect()
+                    else:
+                        session.sql(f"""
+                            UPDATE {DB}.BCR_DETECTION_QUERIES
+                            SET DETECTION_SQL = ?, GENERATED_BY = 'cortex_code', APPROVED = FALSE
+                            WHERE BCR_ID = ?""", [current_sql, sel_bcr]).collect()
+                    load_detection_queries.clear()
+                    st.success("Query saved.")
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
     with sa2:
-        if dq_row is not None:
-            if st.button("✅ Approve", use_container_width=True):
+        if dq_row is not None and not dq_row.get("APPROVED"):
+            if st.button("✅ Approve Query", use_container_width=True,
+                         help="Mark this query as reviewed and validated — it will be flagged as approved for your team"):
                 try:
                     session.sql(f"""
                         UPDATE {DB}.BCR_DETECTION_QUERIES
@@ -947,48 +1018,71 @@ elif page == "🔬 Detection Lab":
                         WHERE BCR_ID = ?""", [sel_bcr]).collect()
                     load_detection_queries.clear()
                     st.success("Approved.")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Approve failed: {e}")
+        elif dq_row is not None and dq_row.get("APPROVED"):
+            st.success("✅ Approved", icon=None)
     with sa3:
-        run_btn = st.button("▶ Run Detection", use_container_width=True, type="primary")
+        run_btn = st.button("▶ Run Detection", use_container_width=True, type="primary",
+                            help="Run the query against ACCOUNT_USAGE / INFORMATION_SCHEMA")
 
     # Run detection
-    if run_btn and current_sql.strip():
-        run_sql = re.sub(
-            r"DATEADD\s*\(\s*['\"]?day['\"]?\s*,\s*-\d+\s*,",
-            f"DATEADD('day', -{days},",
-            current_sql,
-            flags=re.IGNORECASE,
-        )
-        with st.spinner("Running…"):
-            try:
-                result_df = session.sql(run_sql).to_pandas()
-                affected  = len(result_df)
-                st.metric("Matching rows found", affected)
-                if result_df.empty:
-                    st.success(
-                        "No matching queries found in the selected window. "
-                        "Account appears unaffected — or consider widening the window or refining the pattern."
-                    )
-                else:
-                    st.dataframe(result_df.head(200), use_container_width=True, hide_index=True)
+    if run_btn:
+        if not current_sql.strip():
+            st.warning("Paste a detection query first, then click Run.")
+        else:
+            run_sql = re.sub(
+                r"DATEADD\s*\(\s*['\"]?day['\"]?\s*,\s*-\d+\s*,",
+                f"DATEADD('day', -{days},",
+                current_sql,
+                flags=re.IGNORECASE,
+            )
+            with st.spinner("Running…"):
                 try:
-                    summary = f"{affected} rows matched in {window_label}"
-                    if not result_df.empty and "QUERY_TEXT" in result_df.columns:
-                        examples = result_df["QUERY_TEXT"].dropna().head(3).str[:200].tolist()
-                        summary += " | " + " /// ".join(examples)
-                    session.sql(f"""
-                        INSERT INTO {DB}.BCR_DETECTION_RESULTS
-                            (BCR_ID, AFFECTED_COUNT, SIGNAL_SUMMARY, RUN_BY)
-                        VALUES (?, ?, ?, CURRENT_USER())
-                    """, [sel_bcr, affected, summary[:2000]]).collect()
-                except Exception:
-                    pass
-            except Exception as e:
-                err_sql_key = "_failed_sql"
-                st.session_state[err_sql_key] = current_sql
-                st.session_state["_failed_error"] = str(e)
-                st.error(f"Query error: {e}")
+                    result_df = session.sql(run_sql).to_pandas()
+                    affected  = len(result_df)
+                    m1, m2 = st.columns(2)
+                    m1.metric("Rows matched", affected)
+                    m2.metric(
+                        "Result",
+                        "⚠️ Potentially affected" if affected > 0 else "✅ No matches",
+                    )
+                    if result_df.empty:
+                        st.success(
+                            "No matching queries found in the selected window. "
+                            "Account appears unaffected — or consider widening the window "
+                            "or refining the detection pattern with Cortex Code."
+                        )
+                    else:
+                        st.dataframe(result_df.head(200), use_container_width=True, hide_index=True)
+
+                    # Notes on this run
+                    run_note = st.text_input(
+                        "Add a note about this result (optional)",
+                        placeholder="e.g. '3 affected queries — all from ETL pipeline, team notified' or '0 results — confirmed safe'",
+                        key=f"run_note_{sel_bcr}",
+                    )
+                    if st.button("💾 Save result + note", key="save_result"):
+                        try:
+                            summary = f"{affected} rows matched in {window_label}"
+                            if run_note.strip():
+                                summary += f" | Note: {run_note.strip()}"
+                            if not result_df.empty and "QUERY_TEXT" in result_df.columns:
+                                examples = result_df["QUERY_TEXT"].dropna().head(3).str[:200].tolist()
+                                summary += " | Examples: " + " /// ".join(examples)
+                            session.sql(f"""
+                                INSERT INTO {DB}.BCR_DETECTION_RESULTS
+                                    (BCR_ID, AFFECTED_COUNT, SIGNAL_SUMMARY, RUN_BY)
+                                VALUES (?, ?, ?, CURRENT_USER())
+                            """, [sel_bcr, affected, summary[:2000]]).collect()
+                            st.success("Result saved to Detection History.")
+                        except Exception as e:
+                            st.error(f"Could not save: {e}")
+                except Exception as e:
+                    st.session_state["_failed_sql"]   = current_sql
+                    st.session_state["_failed_error"] = str(e)
+                    st.error(f"Query error: {e}")
 
     # Auto-fix on error
     if "_failed_sql" in st.session_state and "_failed_error" in st.session_state:
@@ -1015,60 +1109,11 @@ elif page == "🔬 Detection Lab":
                 except Exception as fix_e:
                     st.error(f"Fix attempt failed: {fix_e}")
 
-    # ── Cortex Code Prompt ────────────────────────────────────────────────────
-    # For BCRs where QUERY_HISTORY ILIKE is too blunt — e.g. schema changes,
-    # permission changes, function signature changes — Cortex Code (the AI
-    # sidebar in Snowsight) has direct account context and will produce a more
-    # useful, targeted query than anything generated here.
-    st.divider()
-    with st.expander("📎 Need a more targeted detection query? — Use Cortex Code in Snowsight"):
-        st.markdown(
-            "Some BCRs involve schema changes, new column behavior, or permission changes "
-            "that **cannot be reliably detected with a generic QUERY_HISTORY ILIKE**. "
-            "For these, the **Cortex Code AI sidebar in Snowsight** produces far better results "
-            "because it has direct access to your account's INFORMATION_SCHEMA and ACCOUNT_USAGE.\n\n"
-            "**Steps:**\n"
-            "1. Copy the prompt below\n"
-            "2. Open Snowsight → any worksheet → click the **✦ Cortex Code** button (top-right)\n"
-            "3. Paste the prompt and iterate with follow-up questions\n"
-            "4. Paste the resulting SQL back into the editor above → **Save** → **Run**"
-        )
-        cortex_prompt_text = (
-            f"I need to check if my Snowflake account is affected by a BCR "
-            f"(Behavior Change Release).\n\n"
-            f"BCR: {title_display}\n"
-            f"Category: {category}\n"
-            f"Enforcement date: {ebd or 'TBD'}\n"
-        )
-        if secs.get("before"):
-            cortex_prompt_text += f"\nBEFORE the change:\n{secs['before']}\n"
-        if secs.get("after"):
-            cortex_prompt_text += f"\nAFTER the change:\n{secs['after']}\n"
-        if secs.get("what_to_do"):
-            cortex_prompt_text += f"\nSnowflake's guidance:\n{secs['what_to_do']}\n"
-        if secs.get("code_examples"):
-            cortex_prompt_text += "\nSQL examples from Snowflake docs:\n"
-            cortex_prompt_text += "\n---\n".join(secs["code_examples"][:2])
-        cortex_prompt_text += (
-            "\n\nPlease:\n"
-            "1. Write a precise SQL query against SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY "
-            "to detect queries affected by this change (last 7 days)\n"
-            "2. If QUERY_HISTORY is not the right surface for this BCR "
-            "(e.g. it is a configuration or object change, not a query syntax change), "
-            "suggest the correct ACCOUNT_USAGE view or INFORMATION_SCHEMA table\n"
-            "3. Write a second query showing count of affected vs total to estimate blast radius\n"
-            "4. List any INFORMATION_SCHEMA objects I should inspect"
-        )
-        st.code(cortex_prompt_text, language=None)
-        st.caption(
-            "Copy the block above → paste into the Cortex Code sidebar "
-            "(✦ icon, top-right of any Snowsight worksheet)."
-        )
-
     st.divider()
 
     # ── Detection History ──────────────────────────────────────────────────────
     st.subheader("Detection History")
+    st.caption("Each time you run a detection and save the result, it is recorded here.")
     try:
         hist = session.sql(f"""
             SELECT RUN_AT, AFFECTED_COUNT, SIGNAL_SUMMARY, RUN_BY
@@ -1077,12 +1122,11 @@ elif page == "🔬 Detection Lab":
             ORDER BY RUN_AT DESC LIMIT 10
         """, [sel_bcr]).to_pandas()
         if hist.empty:
-            st.caption("No detection runs yet for this BCR.")
+            st.caption("No detection runs saved yet for this BCR.")
         else:
             st.dataframe(hist, use_container_width=True, hide_index=True)
     except Exception as e:
         st.warning(f"Could not load history: {e}")
-
 
 # =============================================================================
 # PAGE: REGRESSION MONITOR
