@@ -116,6 +116,47 @@ def strip_sql_fences(text: str) -> str:
     return text.strip()
 
 
+# Nav-pollution detector — descriptions fetched before the .md URL fix contain
+# the full Snowflake docs sidebar. Detect by looking for navigation fingerprints.
+_NAV_SIGNALS = [
+    "All release notes", "release notes", "Behavior change policy",
+    "Current bundles", "Client versions", "Monthly release notes",
+    "Snowflake Connector", "Native SDK", "Bundle (Disabled",
+]
+def desc_is_polluted(text: str) -> bool:
+    if not text:
+        return False
+    sample = text[:600]
+    hits = sum(1 for s in _NAV_SIGNALS if s.lower() in sample.lower())
+    return hits >= 3  # 3+ nav fingerprints = polluted navigation content
+
+
+def build_coe_prompt(title, category, impact, ebd, desc, secs):
+    """Build the CORTEX.COMPLETE prompt for a COE Impact Brief."""
+    return (
+        f"You are a Platform COE lead at a large enterprise using Snowflake. "
+        f"A Snowflake Behavior Change Release is upcoming.\n\n"
+        f"BCR Title: {title}\n"
+        f"Category: {category}\n"
+        f"Impact: {impact}\n"
+        f"EBD: {ebd or 'TBD'}\n\n"
+        f"Description from Snowflake docs:\n"
+        + (f"Before the change: {secs['before']}\n\nAfter the change: {secs['after']}\n\n"
+           f"What you need to do: {secs['what_to_do']}\n"
+           if (secs.get('before') or secs.get('after'))
+           else f"{desc[:1200] if desc and not desc_is_polluted(desc) else title}\n")
+        + "\n"
+        f"SQL examples from docs:\n" + "\n".join(secs.get('code_examples', [])[:4])
+        + "\n\n"
+        f"Generate a COE impact brief in EXACTLY this key: value format, one per line:\n"
+        f"PLAIN_ENGLISH: [1-2 sentences — what Snowflake is changing, plain language]\n"
+        f"AFFECTED_IF: [specific condition — exact query pattern, workload, or config that means you ARE impacted]\n"
+        f"SAFE_IF: [when this change has zero impact on your account]\n"
+        f"ACTION: [the single most important concrete action a DBA should take before the EBD]\n"
+        f"PRIORITY: [HIGH / MEDIUM / LOW based on blast radius and likelihood of impact]\n"
+        f"SNOWFLAKE_DIAGNOSTIC: [copy the Suggested diagnostic steps or Customer readiness text from the description above if present, otherwise write NONE]"
+    )
+
 def parse_bcr_sections(description: str) -> dict:
     """
     Extract structured sections from a BCR description.
@@ -746,11 +787,11 @@ elif page == "🔬 Detection Lab":
             for ex in secs["code_examples"]:
                 st.code(ex.strip(), language="sql")
 
-    elif not desc_display:
-        st.info(
-            "No description loaded yet.  \n"
-            + (f"[View BCR on Snowflake Docs ↗]({docs_url})  \n" if docs_url else "")
-            + "Run **Settings → Backfill Empty Descriptions** to fetch content."
+    elif not desc_display or desc_is_polluted(desc_display):
+        st.warning(
+            "⚠️ Description not yet loaded or contains navigation content from an older fetch.  \n"
+            "Go to **Settings → Backfill Empty Descriptions** to re-fetch clean content from Snowflake docs.  \n"
+            + (f"[View BCR on Snowflake Docs ↗]({docs_url})" if docs_url else "")
         )
 
     # ── Cortex Code Prompt ────────────────────────────────────────────────────
@@ -777,7 +818,8 @@ elif page == "🔬 Detection Lab":
         "4. Paste the resulting SQL into the **Detection Query** editor below → **Save** → **Run**"
     )
 
-    # Build the prompt — always include all available context
+    # Build the prompt — always include all available context, skip if description is polluted
+    polluted = desc_is_polluted(desc_display)
     cortex_prompt_text = (
         f"I need to check if my Snowflake account is affected by a BCR "
         f"(Behavior Change Release) and write a detection query.\n\n"
@@ -796,9 +838,15 @@ elif page == "🔬 Detection Lab":
         cortex_prompt_text += f"\n## SQL examples from Snowflake docs (the exact patterns affected):\n"
         for i, ex in enumerate(secs["code_examples"], 1):
             cortex_prompt_text += f"\nExample {i}:\n```sql\n{ex}\n```\n"
-    elif desc_display and not secs.get("before"):
-        # Fallback: include raw description if structured parse got nothing
-        cortex_prompt_text += f"\n## BCR description:\n{desc_display[:1500]}\n"
+    elif not secs.get("before") and not polluted and desc_display:
+        # Clean description but no structured sections — include trimmed raw text
+        cortex_prompt_text += f"\n## BCR description:\n{desc_display[:1200]}\n"
+    elif not secs.get("before") and polluted:
+        cortex_prompt_text += (
+            f"\n## Note: Full description not yet loaded for this BCR.\n"
+            f"Go to Settings → Backfill Empty Descriptions to fetch clean content "
+            f"from Snowflake docs, then return here for a better prompt.\n"
+        )
 
     cortex_prompt_text += (
         "\n## Please do the following:\n"
@@ -820,12 +868,35 @@ elif page == "🔬 Detection Lab":
     # Persisted to BCR_ASSESSMENTS.COE_BRIEF — survives navigation and sessions.
     st.subheader("COE Impact Brief")
 
-    # Load from DB on first render; fall back to session cache on re-render
+    def _save_brief(parsed):
+        """Save parsed brief dict to DB and session state."""
+        import json as _json
+        st.session_state[brief_key] = parsed
+        try:
+            session.sql(
+                f"UPDATE {DB}.BCR_ASSESSMENTS SET COE_BRIEF = ? WHERE BCR_ID = ?",
+                [_json.dumps(parsed), sel_bcr],
+            ).collect()
+        except Exception:
+            pass
+
+    def _run_brief_generation():
+        coe_prompt = build_coe_prompt(title_display, category, impact, ebd, desc_display, secs)
+        raw = session.sql(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large2', ?)", [coe_prompt]
+        ).collect()[0][0]
+        parsed = {}
+        for line in strip_sql_fences(raw).splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                parsed[k.strip().upper()] = v.strip()
+        return parsed if parsed else None
+
+    # Load from DB on first render
     if brief_key not in st.session_state:
         try:
             row = session.sql(
-                f"SELECT COE_BRIEF FROM {DB}.BCR_ASSESSMENTS WHERE BCR_ID = ?",
-                [sel_bcr],
+                f"SELECT COE_BRIEF FROM {DB}.BCR_ASSESSMENTS WHERE BCR_ID = ?", [sel_bcr]
             ).collect()
             if row and row[0][0]:
                 import json as _json
@@ -835,6 +906,18 @@ elif page == "🔬 Detection Lab":
                 st.session_state[brief_key] = None
         except Exception:
             st.session_state[brief_key] = None
+
+    # Auto-generate if missing and description is clean
+    desc_usable = bool(desc_display) and not desc_is_polluted(desc_display)
+    if st.session_state.get(brief_key) is None and desc_usable:
+        with st.spinner("Generating COE Impact Brief…"):
+            try:
+                parsed = _run_brief_generation()
+                if parsed:
+                    _save_brief(parsed)
+                    st.rerun()
+            except Exception:
+                pass  # silently skip — user can click Regenerate
 
     brief = st.session_state.get(brief_key)
 
@@ -852,8 +935,7 @@ elif page == "🔬 Detection Lab":
             st.session_state[brief_key] = None
             try:
                 session.sql(
-                    f"UPDATE {DB}.BCR_ASSESSMENTS SET COE_BRIEF = NULL WHERE BCR_ID = ?",
-                    [sel_bcr],
+                    f"UPDATE {DB}.BCR_ASSESSMENTS SET COE_BRIEF = NULL WHERE BCR_ID = ?", [sel_bcr]
                 ).collect()
             except Exception:
                 pass
@@ -873,49 +955,19 @@ elif page == "🔬 Detection Lab":
         diag = brief.get("SNOWFLAKE_DIAGNOSTIC", "NONE")
         if diag and diag.upper() != "NONE":
             st.info(f"**📋 Snowflake diagnostic steps:**\n\n{diag}")
-    else:
-        st.caption(
-            "A structured impact brief: plain-English explanation, affected-if / safe-if, "
-            "and recommended action. Generated once and saved to the database."
+    elif not desc_usable:
+        st.info(
+            "COE Brief cannot be generated until the BCR description is loaded.  \n"
+            "Go to **Settings → Backfill Empty Descriptions** first."
         )
+    else:
+        # Shouldn't normally reach here (auto-gen above), but fallback button
         if st.button("Generate COE Impact Brief", type="primary", key="gen_brief"):
-            coe_prompt = (
-                f"You are a Platform COE lead at a large enterprise using Snowflake. "
-                f"A Snowflake Behavior Change Release is upcoming.\n\n"
-                f"BCR Title: {title_display}\n"
-                f"Category: {category}\n"
-                f"Impact: {impact}\n"
-                f"EBD: {ebd or 'TBD'}\n"
-                f"Full description from Snowflake docs:\n{desc_display or title_display}\n\n"
-                f"Generate a COE impact brief in EXACTLY this key: value format, one per line:\n"
-                f"PLAIN_ENGLISH: [1-2 sentences — what Snowflake is changing, no jargon]\n"
-                f"AFFECTED_IF: [specific condition — exact query pattern, workload, or config that means you are impacted]\n"
-                f"SAFE_IF: [when this change has zero impact on your account]\n"
-                f"ACTION: [the single most important concrete action a DBA should take before the EBD]\n"
-                f"PRIORITY: [HIGH / MEDIUM / LOW based on blast radius and likelihood of impact]\n"
-                f"SNOWFLAKE_DIAGNOSTIC: [copy the Suggested diagnostic steps or Customer readiness text from the description above if present, otherwise write NONE]"
-            )
-            with st.spinner("Generating COE Impact Brief…"):
+            with st.spinner("Generating…"):
                 try:
-                    raw = session.sql(
-                        "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large2', ?)",
-                        [coe_prompt],
-                    ).collect()[0][0]
-                    parsed = {}
-                    for line in strip_sql_fences(raw).splitlines():
-                        if ":" in line:
-                            k, _, v = line.partition(":")
-                            parsed[k.strip().upper()] = v.strip()
+                    parsed = _run_brief_generation()
                     if parsed:
-                        st.session_state[brief_key] = parsed
-                        import json as _json
-                        try:
-                            session.sql(
-                                f"UPDATE {DB}.BCR_ASSESSMENTS SET COE_BRIEF = ? WHERE BCR_ID = ?",
-                                [_json.dumps(parsed), sel_bcr],
-                            ).collect()
-                        except Exception:
-                            pass
+                        _save_brief(parsed)
                         st.rerun()
                 except Exception as e:
                     st.error(f"Cortex error: {e}")
@@ -1296,6 +1348,69 @@ elif page == "⚙️ Settings":
                 clear_all_cache()
             except Exception as e:
                 st.error(str(e))
+
+    # ── Generate All COE Briefs ───────────────────────────────────────────────
+    st.divider()
+    st.subheader("Generate COE Briefs")
+    st.caption(
+        "Generates a COE Impact Brief for every BCR that has a clean description "
+        "but no brief yet. Briefs are saved to the database and appear on the Detection Lab page. "
+        "BCRs with polluted or missing descriptions are skipped."
+    )
+    if st.button("📝 Generate All Missing COE Briefs", type="primary"):
+        reg = load_registry()
+        try:
+            existing = session.sql(
+                f"SELECT BCR_ID FROM {DB}.BCR_ASSESSMENTS WHERE COE_BRIEF IS NOT NULL"
+            ).to_pandas()["BCR_ID"].tolist()
+        except Exception:
+            existing = []
+        candidates = reg[
+            reg["DESCRIPTION"].notna() &
+            ~reg["BCR_ID"].isin(existing)
+        ]
+        # Filter out polluted descriptions
+        candidates = candidates[~candidates["DESCRIPTION"].apply(desc_is_polluted)]
+        total = len(candidates)
+        if total == 0:
+            st.info("All BCRs with clean descriptions already have COE Briefs.")
+        else:
+            progress = st.progress(0, text=f"0 / {total}")
+            errors = []
+            for i, (_, row) in enumerate(candidates.iterrows(), 1):
+                try:
+                    secs_r = parse_bcr_sections(row["DESCRIPTION"] or "")
+                    prompt = build_coe_prompt(
+                        row.get("TITLE") or row["BCR_ID"],
+                        row.get("CATEGORY") or "",
+                        row.get("EFFECTIVE_IMPACT") or "TBD",
+                        row.get("EBD") or "",
+                        row.get("DESCRIPTION") or "",
+                        secs_r,
+                    )
+                    raw = session.sql(
+                        "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large2', ?)", [prompt]
+                    ).collect()[0][0]
+                    parsed = {}
+                    for line in strip_sql_fences(raw).splitlines():
+                        if ":" in line:
+                            k, _, v = line.partition(":")
+                            parsed[k.strip().upper()] = v.strip()
+                    if parsed:
+                        import json as _json
+                        session.sql(
+                            f"UPDATE {DB}.BCR_ASSESSMENTS SET COE_BRIEF = ? WHERE BCR_ID = ?",
+                            [_json.dumps(parsed), row["BCR_ID"]],
+                        ).collect()
+                except Exception as e:
+                    errors.append(f"{row['BCR_ID']}: {e}")
+                progress.progress(i / total, text=f"{i} / {total} — {row.get('TITLE') or row['BCR_ID']}")
+            if errors:
+                st.warning(f"Completed with {len(errors)} errors:\n" + "\n".join(errors[:5]))
+            else:
+                st.success(f"Generated COE Briefs for {total} BCRs.")
+            clear_all_cache()
+
 
     # ── Add Unbundled BCR ─────────────────────────────────────────────────────
     st.divider()
