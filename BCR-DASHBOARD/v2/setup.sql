@@ -387,7 +387,7 @@ $$;
 -- =============================================================================
 -- PROCEDURE: ENRICH_BCR_DESCRIPTIONS  (v2 — shares same fetch_doc() pattern)
 -- =============================================================================
-CREATE OR REPLACE PROCEDURE ENRICH_BCR_DESCRIPTIONS(LIMIT_N INT)
+CREATE OR REPLACE PROCEDURE ENRICH_BCR_DESCRIPTIONS(LIMIT_N INT, FORCE_ALL BOOLEAN DEFAULT FALSE)
 RETURNS STRING
 LANGUAGE PYTHON
 RUNTIME_VERSION = '3.11'
@@ -459,12 +459,15 @@ def fetch_title_and_synopsis(url: str) -> tuple:
         return (title[:500], plain[:2000])
 
 
-def enrich(session, limit_n: int) -> str:
-    rows = session.sql("""
+def enrich(session, limit_n: int, force_all: bool = False) -> str:
+    if force_all:
+        where = "DOCS_URL IS NOT NULL AND DOCS_URL != '' AND UNBUNDLED IS DISTINCT FROM TRUE"
+    else:
+        where = "(DESCRIPTION IS NULL OR DESCRIPTION = '' OR TITLE LIKE 'BCR-%') AND DOCS_URL IS NOT NULL AND DOCS_URL != '' AND UNBUNDLED IS DISTINCT FROM TRUE"
+
+    rows = session.sql(f"""
         SELECT BCR_ID, DOCS_URL FROM BCR_TRACKER_DB.TRACKING.BCR_REGISTRY
-        WHERE (DESCRIPTION IS NULL OR DESCRIPTION = '' OR TITLE LIKE 'BCR-%')
-          AND DOCS_URL IS NOT NULL AND DOCS_URL != ''
-          AND UNBUNDLED IS DISTINCT FROM TRUE
+        WHERE {where}
         ORDER BY FETCHED_AT DESC
         LIMIT ?
     """, [limit_n]).collect()
@@ -475,15 +478,25 @@ def enrich(session, limit_n: int) -> str:
         title, synopsis = fetch_title_and_synopsis(docs_url)
         if not title and not synopsis:
             continue
-        session.sql("""
-            UPDATE BCR_TRACKER_DB.TRACKING.BCR_REGISTRY
-            SET TITLE       = COALESCE(NULLIF(?, ''), TITLE),
-                DESCRIPTION = COALESCE(NULLIF(?, ''), DESCRIPTION)
-            WHERE BCR_ID = ?
-        """, [title, synopsis, bcr_id]).collect()
+        if force_all:
+            # Force overwrite — replace whatever is stored
+            session.sql("""
+                UPDATE BCR_TRACKER_DB.TRACKING.BCR_REGISTRY
+                SET TITLE       = COALESCE(NULLIF(?, ''), TITLE),
+                    DESCRIPTION = ?
+                WHERE BCR_ID = ?
+            """, [title, synopsis, bcr_id]).collect()
+        else:
+            session.sql("""
+                UPDATE BCR_TRACKER_DB.TRACKING.BCR_REGISTRY
+                SET TITLE       = COALESCE(NULLIF(?, ''), TITLE),
+                    DESCRIPTION = COALESCE(NULLIF(?, ''), DESCRIPTION)
+                WHERE BCR_ID = ?
+            """, [title, synopsis, bcr_id]).collect()
         updated += 1
 
-    return f"OK: enriched {updated} of {len(rows)} BCR descriptions"
+    mode = "force re-fetch" if force_all else "backfill"
+    return f"OK: {mode} enriched {updated} of {len(rows)} BCR descriptions"
 $$;
 
 -- =============================================================================

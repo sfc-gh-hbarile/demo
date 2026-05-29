@@ -182,10 +182,26 @@ def parse_bcr_sections(description: str) -> dict:
     code_examples = []
 
     # 1. Fenced code blocks ``` ... ``` (with or without language tag)
+    #    This is the format produced by the .md URL fetch — the primary/correct format
     fenced = re.findall(r'```(?:[a-zA-Z]*)?\s*\n?(.*?)```', description, re.DOTALL)
     code_examples += [c.strip() for c in fenced if c.strip() and len(c.strip()) > 10]
 
-    # 2. 4-space or tab indented code blocks (common in older Snowflake docs)
+    # 2. "Copy code" artifacts — produced by older HTML-based fetches.
+    #    Pattern: "Copy code\n<SQL lines until blank line or new prose section>"
+    if not code_examples:
+        copy_blocks = re.findall(
+            r'Copy code\s*\n((?:(?!Copy code)[^\n]+\n?){1,30})',
+            description, re.IGNORECASE
+        )
+        for block in copy_blocks:
+            stripped = block.strip()
+            if len(stripped) > 10 and any(
+                kw in stripped.upper()
+                for kw in ("SELECT", "INSERT", "UPDATE", "CREATE", "ALTER", "DROP", "WITH")
+            ):
+                code_examples.append(stripped)
+
+    # 3. 4-space or tab indented code blocks (fallback)
     if not code_examples:
         indented_blocks = re.findall(
             r'(?:(?:^|\n)(?:    |\t)[^\n]+)+', description, re.MULTILINE
@@ -198,7 +214,7 @@ def parse_bcr_sections(description: str) -> dict:
             )
         ]
 
-    # 3. Admonition / note blocks (:::note, :::tip etc.) that contain SQL
+    # 4. Admonition / note blocks (:::note, :::tip etc.) that contain SQL
     admonition_sql = re.findall(
         r':::(?:note|tip|warning|caution)[^\n]*\n(.*?):::', description, re.DOTALL | re.IGNORECASE
     )
@@ -1338,16 +1354,31 @@ elif page == "⚙️ Settings":
         "— for example, after the initial setup or after a parser fix was deployed."
     )
     enrich_n = st.number_input("Max BCRs to backfill", min_value=1, max_value=100, value=20)
-    if st.button("🔧 Backfill Empty Descriptions"):
-        with st.spinner(f"Fetching individual BCR pages for up to {enrich_n} BCRs with missing descriptions…"):
-            try:
-                res = session.sql(
-                    f"CALL {DB}.ENRICH_BCR_DESCRIPTIONS(?)", [int(enrich_n)]
-                ).collect()[0][0]
-                st.success(res)
-                clear_all_cache()
-            except Exception as e:
-                st.error(str(e))
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("🔧 Backfill Empty Descriptions", use_container_width=True,
+                     help="Fetches descriptions only for BCRs that have none yet"):
+            with st.spinner(f"Fetching up to {enrich_n} BCRs with missing descriptions…"):
+                try:
+                    res = session.sql(
+                        f"CALL {DB}.ENRICH_BCR_DESCRIPTIONS(?, FALSE)", [int(enrich_n)]
+                    ).collect()[0][0]
+                    st.success(res)
+                    clear_all_cache()
+                except Exception as e:
+                    st.error(str(e))
+    with c2:
+        if st.button("🔄 Re-fetch All Descriptions", use_container_width=True,
+                     help="Force re-fetches from Snowflake docs .md URL — overwrites polluted or outdated descriptions"):
+            with st.spinner(f"Re-fetching up to {enrich_n} BCR descriptions from docs.snowflake.com…"):
+                try:
+                    res = session.sql(
+                        f"CALL {DB}.ENRICH_BCR_DESCRIPTIONS(?, TRUE)", [int(enrich_n)]
+                    ).collect()[0][0]
+                    st.success(res)
+                    clear_all_cache()
+                except Exception as e:
+                    st.error(str(e))
 
     # ── Generate All COE Briefs ───────────────────────────────────────────────
     st.divider()
