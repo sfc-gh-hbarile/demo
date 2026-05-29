@@ -1,30 +1,39 @@
 -- =============================================================================
 -- Snowflake BCR Tracker — Setup Script (v2)
 -- =============================================================================
--- v1 → v2 change: fetch_doc() helper tries the .md URL first (clean markdown,
--- no JS/navigation) and falls back to the HTML URL if .md returns 404.
--- This matches the Snowflake CLI's own behaviour ("falls back to URL above on 404").
--- All table DDL, tasks, and app logic are identical to v1.
+-- WHAT THIS SCRIPT DOES:
+--   1. Drops and recreates the BCR_TRACKER_DB database (clean slate)
+--   2. Creates all tables, procedures, tasks, and network rules
+--   3. Runs an initial sync to load active BCR bundles + descriptions
 --
--- Safe to re-run: CREATE IF NOT EXISTS on tables, CREATE OR REPLACE on procedures.
--- Prerequisites:
---   • Role with CREATE DATABASE, CREATE INTEGRATION, CREATE TASK privileges
---   • Cortex AI enabled on the account (for CORTEX.COMPLETE + Cortex Search)
+-- RUN TIME: ~2-3 minutes (network fetches for BCR descriptions)
+--
+-- PREREQUISITE: Update the warehouse name below if yours is not COMPUTE_WH
 -- =============================================================================
 
-SET BCR_WH  = 'COMPUTE_WH';   -- ← update to your warehouse name
+SET BCR_WH  = 'COMPUTE_WH';   -- ← update to your warehouse name if needed
 SET BCR_DB  = 'BCR_TRACKER_DB';
 SET BCR_SCH = 'TRACKING';
 
-CREATE DATABASE IF NOT EXISTS IDENTIFIER($BCR_DB);
+-- =============================================================================
+-- STEP 1 — DROP EVERYTHING (clean slate)
+-- =============================================================================
+-- Drops the entire database including all tables, procedures, tasks, and data.
+-- This ensures no stale schema, missing columns, or old procedure overloads.
+DROP DATABASE IF EXISTS BCR_TRACKER_DB;
+
+-- =============================================================================
+-- STEP 2 — CREATE DATABASE AND SCHEMA
+-- =============================================================================
+CREATE DATABASE IDENTIFIER($BCR_DB);
 USE DATABASE    IDENTIFIER($BCR_DB);
 USE WAREHOUSE   IDENTIFIER($BCR_WH);
-CREATE SCHEMA   IF NOT EXISTS IDENTIFIER($BCR_SCH);
+CREATE SCHEMA   IDENTIFIER($BCR_SCH);
 USE SCHEMA      IDENTIFIER($BCR_SCH);
 
 -- ─── Tables ───────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS BCR_REGISTRY (
+CREATE TABLE BCR_REGISTRY (
     BCR_ID          VARCHAR(80)  NOT NULL,
     BUNDLE_ID       VARCHAR(15)  NOT NULL,
     UNBUNDLED       BOOLEAN      DEFAULT FALSE,
@@ -41,7 +50,7 @@ CREATE TABLE IF NOT EXISTS BCR_REGISTRY (
     CONSTRAINT pk_bcr_registry PRIMARY KEY (BCR_ID)
 );
 
-CREATE TABLE IF NOT EXISTS BCR_ASSESSMENTS (
+CREATE TABLE BCR_ASSESSMENTS (
     ASSESSMENT_ID   NUMBER AUTOINCREMENT PRIMARY KEY,
     BCR_ID          VARCHAR(80)  NOT NULL REFERENCES BCR_REGISTRY(BCR_ID),
     BUNDLE_ID       VARCHAR(15),
@@ -59,7 +68,7 @@ CREATE TABLE IF NOT EXISTS BCR_ASSESSMENTS (
     CONSTRAINT uq_assessment UNIQUE (BCR_ID)
 );
 
-CREATE TABLE IF NOT EXISTS BCR_DETECTION_QUERIES (
+CREATE TABLE BCR_DETECTION_QUERIES (
     QUERY_ID        NUMBER AUTOINCREMENT PRIMARY KEY,
     BCR_ID          VARCHAR(80)  NOT NULL REFERENCES BCR_REGISTRY(BCR_ID),
     DETECTION_SQL   TEXT,
@@ -71,7 +80,7 @@ CREATE TABLE IF NOT EXISTS BCR_DETECTION_QUERIES (
     CONSTRAINT uq_detection_query UNIQUE (BCR_ID)
 );
 
-CREATE TABLE IF NOT EXISTS BCR_DETECTION_RESULTS (
+CREATE TABLE BCR_DETECTION_RESULTS (
     RESULT_ID        NUMBER AUTOINCREMENT PRIMARY KEY,
     BCR_ID           VARCHAR(80)  NOT NULL REFERENCES BCR_REGISTRY(BCR_ID),
     RUN_AT           TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
@@ -83,7 +92,7 @@ CREATE TABLE IF NOT EXISTS BCR_DETECTION_RESULTS (
     RUN_BY           VARCHAR(200)  DEFAULT CURRENT_USER()
 );
 
-CREATE TABLE IF NOT EXISTS BCR_REGRESSION_SNAPSHOTS (
+CREATE TABLE BCR_REGRESSION_SNAPSHOTS (
     SNAPSHOT_ID         NUMBER AUTOINCREMENT PRIMARY KEY,
     BUNDLE_ID           VARCHAR(15)  NOT NULL,
     SNAPSHOT_DATE       DATE         NOT NULL,
@@ -96,27 +105,30 @@ CREATE TABLE IF NOT EXISTS BCR_REGRESSION_SNAPSHOTS (
     CONSTRAINT uq_regression_snapshot UNIQUE (BUNDLE_ID, SNAPSHOT_DATE)
 );
 
-CREATE TABLE IF NOT EXISTS BCR_CONFIG (
+CREATE TABLE BCR_CONFIG (
     SETTING_KEY   VARCHAR(100) NOT NULL PRIMARY KEY,
     SETTING_VALUE TEXT,
     UPDATED_AT    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
 INSERT INTO BCR_CONFIG (SETTING_KEY, SETTING_VALUE)
-    SELECT 'LAST_REFRESH', NULL
-    WHERE NOT EXISTS (SELECT 1 FROM BCR_CONFIG WHERE SETTING_KEY = 'LAST_REFRESH');
+VALUES ('LAST_REFRESH', NULL);
 
--- ─── External Network Access ──────────────────────────────────────────────────
-
-CREATE NETWORK RULE IF NOT EXISTS SNOWFLAKE_DOCS_RULE
+-- =============================================================================
+-- STEP 3 — EXTERNAL NETWORK ACCESS (to fetch BCR docs from docs.snowflake.com)
+-- =============================================================================
+CREATE OR REPLACE NETWORK RULE SNOWFLAKE_DOCS_RULE
     TYPE       = HOST_PORT
     MODE       = EGRESS
     VALUE_LIST = ('docs.snowflake.com');
 
-CREATE EXTERNAL ACCESS INTEGRATION IF NOT EXISTS SNOWFLAKE_DOCS_ACCESS
+CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION SNOWFLAKE_DOCS_ACCESS
     ALLOWED_NETWORK_RULES = (SNOWFLAKE_DOCS_RULE)
     ENABLED               = TRUE;
 
+-- =============================================================================
+-- STEP 4 — STORED PROCEDURES
+-- =============================================================================
 -- =============================================================================
 -- PROCEDURE: FETCH_BCR_BUNDLE  (v2 — .md URL with HTML fallback)
 -- =============================================================================
@@ -583,36 +595,45 @@ BEGIN
 END;
 $$;
 
--- ─── Scheduled Tasks ──────────────────────────────────────────────────────────
-CREATE TASK IF NOT EXISTS BCR_WEEKLY_SYNC
+-- =============================================================================
+-- STEP 5 — SCHEDULED TASKS
+-- =============================================================================
+CREATE TASK BCR_WEEKLY_SYNC
     WAREHOUSE = IDENTIFIER($BCR_WH)
     SCHEDULE  = 'USING CRON 0 7 * * 1 UTC'
     COMMENT   = 'Auto-discovers active BCR bundles via SYSTEM$ and fetches new BCR content'
 AS
     CALL BCR_TRACKER_DB.TRACKING.SYNC_ACTIVE_BUNDLES();
 
-CREATE TASK IF NOT EXISTS BCR_NIGHTLY_REGRESSION
+CREATE TASK BCR_NIGHTLY_REGRESSION
     WAREHOUSE = IDENTIFIER($BCR_WH)
     SCHEDULE  = 'USING CRON 0 6 * * * UTC'
     COMMENT   = 'Daily error rate snapshot for regression monitoring'
 AS
     CALL BCR_TRACKER_DB.TRACKING.RUN_REGRESSION_SNAPSHOT();
 
-ALTER TASK IF EXISTS BCR_WEEKLY_SYNC       RESUME;
-ALTER TASK IF EXISTS BCR_NIGHTLY_REGRESSION RESUME;
+ALTER TASK BCR_WEEKLY_SYNC       RESUME;
+ALTER TASK BCR_NIGHTLY_REGRESSION RESUME;
 
--- ─── Initial Load ─────────────────────────────────────────────────────────────
+-- =============================================================================
+-- STEP 6 — INITIAL LOAD
+-- Fetches active BCR bundles from Snowflake + descriptions from docs.
+-- This takes ~2 minutes. When it completes, the verify query below should
+-- show BCR_COUNT > 0 and WITH_DESC > 0 for each active bundle.
+-- =============================================================================
 CALL SYNC_ACTIVE_BUNDLES();
 
--- Verify
+-- =============================================================================
+-- VERIFY — expected output: BCR_COUNT > 0, WITH_DESC > 0 per bundle
+-- =============================================================================
 SELECT r.BUNDLE_ID, r.BUNDLE_STATUS, COUNT(*) AS BCR_COUNT,
        COUNT_IF(r.IMPACT_DEFAULT='High')   AS HIGH,
        COUNT_IF(r.IMPACT_DEFAULT='Medium') AS MEDIUM,
        COUNT_IF(r.IMPACT_DEFAULT='Low')    AS LOW,
-       COUNT_IF(r.DESCRIPTION != '' AND r.DESCRIPTION IS NOT NULL) AS WITH_DESC
+       COUNT_IF(r.DESCRIPTION IS NOT NULL AND r.DESCRIPTION != '') AS WITH_DESC
 FROM BCR_REGISTRY r
 WHERE r.UNBUNDLED IS DISTINCT FROM TRUE
 GROUP BY 1, 2
 ORDER BY 1 DESC;
 
-SELECT 'BCR Tracker v2 setup complete.' AS STATUS;
+SELECT 'BCR Tracker v2 setup complete — paste streamlit_app.py into Snowsight to deploy the app.' AS STATUS;
