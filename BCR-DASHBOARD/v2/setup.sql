@@ -387,6 +387,10 @@ $$;
 -- =============================================================================
 -- PROCEDURE: ENRICH_BCR_DESCRIPTIONS  (v2 — shares same fetch_doc() pattern)
 -- =============================================================================
+-- Drop the old 1-param signature first to avoid overload ambiguity.
+-- Snowflake rejects CREATE OR REPLACE when an existing 1-param version
+-- and a new 2-param version (with a default) would both match a 1-arg call.
+DROP PROCEDURE IF EXISTS ENRICH_BCR_DESCRIPTIONS(INT);
 CREATE OR REPLACE PROCEDURE ENRICH_BCR_DESCRIPTIONS(LIMIT_N INT, FORCE_ALL BOOLEAN DEFAULT FALSE)
 RETURNS STRING
 LANGUAGE PYTHON
