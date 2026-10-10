@@ -27,7 +27,8 @@ GRANT MONITOR ON RESOURCE MONITOR FPA_DEMO_RM TO ROLE FPA_DEMO_ROLE;
 
 -- Cortex AI + read-only usage views for cost/observability
 GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE FPA_DEMO_ROLE;
-GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER TO ROLE FPA_DEMO_ROLE;
+GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER TO ROLE FPA_DEMO_ROLE;       -- metering, agent/search usage, query attribution
+GRANT DATABASE ROLE SNOWFLAKE.GOVERNANCE_VIEWER TO ROLE FPA_DEMO_ROLE;  -- QUERY_HISTORY (tagged agent tool queries)
 -- (CREATE AGENT is a schema-level privilege; the role owns the schema so no grant is needed)
 
 -- Demo user. Cortex Agents use the user's DEFAULT role and DEFAULT warehouse.

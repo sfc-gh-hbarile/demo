@@ -20,7 +20,8 @@ The agent includes:
 Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**, whose only role is `FPA_DEMO_ROLE`, and you see only the demo objects instead of everything ACCOUNTADMIN sees.
 
 - Default role `FPA_DEMO_ROLE`, default warehouse `FPA_DEMO_WH`, default namespace `FPA_DEMO.FPA`, secondary roles off. Cortex Agents use the user's **default** role and warehouse.
-- Grants: ownership of `FPA_DEMO` and `FPA_DEMO_WH`, `SNOWFLAKE.CORTEX_USER`, `SNOWFLAKE.USAGE_VIEWER` (for the cost queries), and MONITOR on `FPA_DEMO_RM`.
+- Grants: ownership of `FPA_DEMO`, `FPA_DEMO_WH` and `FPA_AGENT_WH`; `SNOWFLAKE.CORTEX_USER`; `SNOWFLAKE.USAGE_VIEWER` (metering, agent and search usage, query attribution); `SNOWFLAKE.GOVERNANCE_VIEWER` (`QUERY_HISTORY`, needed to find the agent's tagged tool queries); and MONITOR on `FPA_DEMO_RM`.
+- Streamlit apps run with **only** the owner role (no secondary roles), so every view the dashboard reads must be readable by `FPA_DEMO_ROLE` alone. Test with `USE SECONDARY ROLES NONE;`.
 - `FPA_DEMO_ROLE` is also granted to SYSADMIN and to the admin who runs the build.
 - Set the password yourself after the build. Do not commit it:
   ```sql
