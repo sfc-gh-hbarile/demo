@@ -39,7 +39,7 @@ Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**
 | 06 | `06_agent_skill_upload.sql` | FPA_DEMO_ROLE | Creates the stage and uploads `agent_skills/fpa-variance-review/SKILL.md` (needs a client that supports PUT) | `LS` shows SKILL.md |
 | 07 | `07_agent.sql` | FPA_DEMO_ROLE | Creates `FPA_DEMO.FPA.FPA_AGENT` | `DESCRIBE AGENT` shows 5 tools and 1 skill |
 | 08 | `08_test_agent_questions.sql` | FPA_DEMO_ROLE | Runs the 5 demo questions through `DATA_AGENT_RUN`, then resets the workflow tables | See expected results below |
-| 09 | `09_cost_monitoring.sql` | FPA_DEMO_ROLE | Agent token credits, warehouse credits, resource monitor | May be empty for a few hours (ACCOUNT_USAGE lag) |
+| 09 | `09_cost_monitoring.sql` | FPA_DEMO_ROLE | Agent cost summary, per user, per request, by service and model; Cortex Search; warehouse; resource monitor (see **Monitoring agent costs**) | May be empty for a few hours (ACCOUNT_USAGE lag) |
 | 99 | `99_cleanup.sql` | ACCOUNTADMIN | Drops everything. **Run only when finished.** | |
 
 `FPA_Agentic_Finance_Demo_Prompt.md` is the original build prompt.
@@ -72,6 +72,48 @@ SELECT * FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;           -- READY_TO_SEND
 ```sql
 DELETE FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG; DELETE FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;
 ```
+
+## Monitoring agent costs
+
+### What an agent call costs
+
+One question to `FPA_AGENT` can incur three kinds of cost:
+
+| Cost | Where it comes from | Where to see it |
+|---|---|---|
+| **Agent token credits** | LLM tokens for orchestration (planning, choosing tools, writing the answer) and for Cortex Analyst generating SQL from the semantic view | `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY.TOKEN_CREDITS`, split by service and model in `CREDITS_GRANULAR` |
+| **Warehouse compute** | SQL the tools run on `FPA_DEMO_WH`: Analyst queries, `RUN_SCENARIO`, `SUBMIT_REVIEW_PACKAGE` | Per request: `METADATA:sql_query_credits` in the agent view. In total: `WAREHOUSE_METERING_HISTORY` |
+| **Cortex Search** | Serving and indexing for `FPA_ASSUMPTIONS_SEARCH` (billed on its own, not per agent call) | `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY` |
+
+Each row in `CORTEX_AGENT_USAGE_HISTORY` is one agent request, with user, role, interface (`metadata:interaction_interface`, for example `sql_function` or `agent_admin_ui`), tokens, and credits. **Requests made in Snowflake CoWork are not in this view**; they are recorded in `SNOWFLAKE_COWORK_USAGE_HISTORY`.
+
+### Observed cost in this account (synthetic test run, 9 Oct 2026)
+
+| Metric | Value |
+|---|---|
+| Agent requests | 6 |
+| Token credits | 1.28 total, about **0.21 per question** |
+| Warehouse SQL credits attributed to agent calls | 0.045 |
+| `FPA_DEMO_WH` total for the build day | about 0.19 (includes setup and testing) |
+
+Multi-step questions such as the EMEA "why" question and the review package use the most tokens, because the agent loads the skill and makes several tool calls. Single-tool questions such as the headcount lookup or the scenario cost much less.
+
+### How to monitor
+
+Run `09_cost_monitoring.sql` as `FPA_DEMO_ROLE`. It includes:
+1. **Summary:** requests, token credits, SQL credits, average credits per request
+2. **Daily by user:** credits per day per user
+3. **Per request:** interface, tokens, and credits for the last 20 calls
+4. **By service and model:** orchestration (`cortex_agents`) vs `cortex_analyst`, from `CREDITS_GRANULAR`
+5. **Cortex Search:** credits by day and consumption type
+6. **Warehouse:** daily `FPA_DEMO_WH` credits
+7. **Resource monitor:** quota used vs 10 credits per month
+
+Notes:
+- **Latency:** `ACCOUNT_USAGE` views lag by up to a few hours. Check costs after the demo, not during it.
+- **Access:** `FPA_DEMO_ROLE` reads these views through the `SNOWFLAKE.USAGE_VIEWER` database role, so the demo user doesn't need ACCOUNTADMIN.
+- **Guardrail scope:** `FPA_DEMO_RM` caps only warehouse compute; it suspends `FPA_DEMO_WH` at 10 credits per month. Agent token credits are serverless, so the resource monitor does not cap them. Track them with the queries above, or set a Snowflake budget for AI spend.
+- **Plain language:** in CoCo, ask: *"Using cost-intelligence, show Cortex Agent credits for FPA_AGENT and warehouse credits for FPA_DEMO_WH by day for the last 7 days."*
 
 ## Notes
 
