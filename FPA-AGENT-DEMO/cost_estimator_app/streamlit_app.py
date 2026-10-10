@@ -51,6 +51,29 @@ def load_load_test() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=600)
+def load_runs() -> pd.DataFrame:
+    df = conn.query("SELECT * FROM FPA_DEMO.FPA.V_RUN_COSTS ORDER BY start_ts DESC", ttl=600)
+    df.columns = [c.lower() for c in df.columns]
+    return df
+
+
+@st.cache_data(ttl=600)
+def load_question_costs() -> pd.DataFrame:
+    """One row per agent question in a tagged run, with FIRST/REPEAT from the load-test log."""
+    df = conn.query(
+        """SELECT q.run_id, q.run_label, q.request_id, q.start_time, q.token_credits, q.tagged_wh_credits,
+                  q.reported_sql_credits, q.tool_queries, q.warehouses, q.cache_read_credits,
+                  q.cache_write_credits, COALESCE(l.attempt, 'FIRST') AS attempt, l.question_id
+           FROM FPA_DEMO.FPA.V_AGENT_QUESTION_COSTS q
+           LEFT JOIN FPA_DEMO.FPA.V_LOAD_TEST_COSTS l ON l.request_id = q.request_id
+           WHERE q.run_id IS NOT NULL""",
+        ttl=600,
+    )
+    df.columns = [c.lower() for c in df.columns]
+    return df
+
+
 @st.cache_data(ttl=3600)
 def load_search_daily() -> float:
     df = conn.query(
@@ -91,11 +114,31 @@ st.caption("Acme Corp synthetic demo · agent `FPA_DEMO.FPA.FPA_AGENT` · calibr
 calib = load_calibration()
 seg = {r["segment"]: r for _, r in calib.iterrows()}
 all_req = seg.get("ALL_REQUESTS")
-measured_all = float(all_req["avg_token_credits"]) if all_req is not None and all_req["requests"] else 0.21
-measured_first = float(seg["LOAD_TEST_FIRST"]["avg_token_credits"]) if "LOAD_TEST_FIRST" in seg else measured_all
-measured_repeat = float(seg["LOAD_TEST_REPEAT"]["avg_token_credits"]) if "LOAD_TEST_REPEAT" in seg else measured_all
-measured_sql = float(all_req["avg_sql_credits"] or 0) if all_req is not None else 0.0075
-has_load_test = "LOAD_TEST_FIRST" in seg
+runs = load_runs()
+qc = load_question_costs()
+
+with st.sidebar:
+    st.header("Calibration source")
+    run_opts = runs[runs["questions"] > 0]
+    labels = {r["run_id"]: f'{r["run_label"]} ({r["run_type"]}, {int(r["questions"])} q)' for _, r in run_opts.iterrows()}
+    selected_runs = st.multiselect("Tagged runs to calibrate from", list(labels), default=list(labels),
+                                   format_func=lambda k: labels[k],
+                                   help="Only agent requests inside these tagged runs are used. Build, "
+                                        "setup, and app queries are never counted.")
+
+sel = qc[qc["run_id"].isin(selected_runs)]
+if not sel.empty:
+    measured_all = float(sel["token_credits"].mean())
+    firsts, repeats = sel[sel["attempt"] == "FIRST"], sel[sel["attempt"] == "REPEAT"]
+    measured_first = float(firsts["token_credits"].mean()) if not firsts.empty else measured_all
+    measured_repeat = float(repeats["token_credits"].mean()) if not repeats.empty else measured_all
+    measured_sql = float(sel["tagged_wh_credits"].mean())
+    has_load_test = not repeats.empty
+else:
+    measured_all = float(all_req["avg_token_credits"]) if all_req is not None and all_req["requests"] else 0.21
+    measured_first = measured_repeat = measured_all
+    measured_sql = float(all_req["avg_sql_credits"] or 0) if all_req is not None else 0.0075
+    has_load_test = False
 
 # ---------------- Inputs ----------------
 with st.sidebar:
@@ -143,6 +186,13 @@ c1, c2, c3, c4 = st.columns(4)
 for col, period in zip((c1, c2, c3, c4), ("Daily", "Weekly", "Monthly", "Yearly")):
     col.metric(f"{period} cost", f"${by.loc[period, 'Total $']:,.0f}",
                f"{by.loc[period, 'Total credits']:,.1f} credits", delta_color="off", border=True)
+
+split = by.loc["Daily", ["Agent tokens", "Warehouse", "Cortex Search"]]
+tot = float(split.sum()) or 1.0
+s1, s2, s3 = st.columns(3)
+s1.metric("AI token share", f"{split['Agent tokens'] / tot:.1%}", border=True)
+s2.metric("Warehouse share", f"{split['Warehouse'] / tot:.1%}", border=True)
+s3.metric("Cortex Search share", f"{split['Cortex Search'] / tot:.1%}", border=True)
 
 st.subheader("Projection")
 st.dataframe(
@@ -198,6 +248,16 @@ if all_req is not None and all_req["requests"]:
     a3.metric("Input tokens served from cache", f"{float(all_req['cache_hit_ratio_tokens'] or 0):.0%}", border=True)
     a4.metric("Credits spent on cache writes", f"{float(all_req['cache_write_share'] or 0):.0%}", border=True)
 
+st.markdown("**Tagged runs** (exact: agent tokens + warehouse compute of the agent's own tool queries)")
+st.dataframe(
+    runs[["run_label", "run_type", "user_name", "start_ts", "questions", "token_credits", "tagged_wh_credits",
+          "metered_agent_wh", "harness_credits_excluded", "token_pct", "wh_pct"]],
+    hide_index=True, use_container_width=True,
+    column_config={"token_pct": st.column_config.NumberColumn("Token %", format="%.2f%%"),
+                   "wh_pct": st.column_config.NumberColumn("Warehouse %", format="%.2f%%"),
+                   "metered_agent_wh": st.column_config.NumberColumn("Metered FPA_AGENT_WH (incl. idle)"),
+                   "harness_credits_excluded": st.column_config.NumberColumn("Harness (excluded)")})
+
 lt = load_load_test()
 if not lt.empty and lt["matched_calls"].sum() > 0:
     st.markdown("**Load test: first ask vs repeat** (same question asked again)")
@@ -215,6 +275,10 @@ with st.expander("Recent agent requests"):
 with st.expander("How this estimate works"):
     st.markdown(
         f"""
+- **Calibration** uses only agent requests inside the selected tagged runs (`FPA_DEMO.FPA.COST_RUNS`).
+  Token credits come from `CORTEX_AGENT_USAGE_HISTORY`; warehouse credits are the attributed compute of
+  queries Snowflake tagged `cortex-agent-<request_id>` / `snowflake-intelligence-<request_id>`
+  (stored procedure internals rolled up via `ROOT_QUERY_ID`).
 - **Questions/day** = users × questions per user per day.
 - **Agent token credits/day** = first asks × first-ask credits + repeats × repeat credits.
   Repeats reuse the model's prompt cache. Cache reads are billed far below cache writes.

@@ -43,6 +43,7 @@ Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**
 | 10 | `10_cost_views.sql` | FPA_DEMO_ROLE | Cost model views: `V_AGENT_REQUEST_COSTS`, `V_AGENT_REQUESTS`, `V_LOAD_TEST_COSTS`, `V_COST_CALIBRATION`, plus the `AGENT_LOAD_TEST_LOG` table | Granular credits match `TOKEN_CREDITS` for every request |
 | 11 | `11_load_test.sql` | FPA_DEMO_ROLE | `RUN_AGENT_LOAD_TEST(n, label)`: asks the agent n questions (first asks, then repeats) and logs each call | 8/8 calls succeed; costs appear after the usage lag |
 | 12 | `12_deploy_cost_estimator_app.sql` + `cost_estimator_app/` | FPA_DEMO_ROLE | Deploys the **FP&A Agent Cost Estimator** Streamlit app | `SHOW STREAMLITS` returns one row |
+| 13 | `13_agent_warehouse_tagging.sql` | ACCOUNTADMIN, then FPA_DEMO_ROLE | Dedicated `FPA_AGENT_WH` for agent tools, `COST_RUNS` table, `START_COST_RUN` / `END_COST_RUN` | Tagged warehouse credits = agent-reported SQL credits for 20 of 20 requests |
 | 99 | `99_cleanup.sql` | ACCOUNTADMIN | Drops everything. **Run only when finished.** | |
 
 `FPA_Agentic_Finance_Demo_Prompt.md` is the original build prompt.
@@ -187,6 +188,50 @@ Warehouse SQL attributed to agent calls averaged about 0.003 credits per questio
 - These are estimates based on this demo's question mix, tools and model.
 - Longer multi-turn threads, more tools, different models or a customer's own questions will change the cost per question. Re-measure with their questions.
 - The warehouse "attributed" method understates real warehouse cost, because XS warehouses bill a 60-second minimum on each resume. For steady use, use the "awake hours" method.
+
+## Accurate cost attribution (tagged runs)
+
+Use this method to count **only** the agent's work, never the build, setup, app, or anything else on the account.
+
+### What gets tagged and how
+| Cost | Exact source | How it is linked to a question |
+|---|---|---|
+| **AI tokens** | `CORTEX_AGENT_USAGE_HISTORY.TOKEN_CREDITS` | One row per agent request (`REQUEST_ID`) |
+| **Warehouse compute behind the agent** | `QUERY_ATTRIBUTION_HISTORY.CREDITS_ATTRIBUTED_COMPUTE` | Snowflake tags every agent tool query with `QUERY_TAG = 'cortex-agent-<request_id>'`. Procedure calls from the Snowsight playground or CoWork are tagged `'snowflake-intelligence-<request_id>'`. Statements *inside* a stored procedure aren't tagged; they roll up to the tagged CALL through `ROOT_QUERY_ID`. |
+| **Full warehouse cost incl. idle** | `WAREHOUSE_METERING_HISTORY` for **`FPA_AGENT_WH`** | The agent's tools (`fpa_analyst`, `run_scenario`, `submit_review_package`) run only on this dedicated warehouse, so its metering is agent-only. It's hourly, so accurate to the hour. |
+| **Run scope** | `FPA_DEMO.FPA.COST_RUNS` | Each run is a named window for one user. Only agent requests by that user inside the window count. The harness's own queries are reported separately and excluded. |
+
+Validation in this account: across 20 agent requests, the tagged warehouse credits (0.044798) **exactly equal** the agent's own reported `sql_query_credits`, request by request.
+
+### Run it
+```sql
+-- Load test: registers the run automatically
+CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(10, 'tier_10');
+
+-- Live demo or customer pilot: wrap the session
+CALL FPA_DEMO.FPA.START_COST_RUN('customer_pilot_wk1', 'DEMO_SESSION');   -- returns run_id
+--   ... ask the agent questions as the same user (Snowsight agent, CoWork, or SQL) ...
+CALL FPA_DEMO.FPA.END_COST_RUN('<run_id>');
+
+-- A few hours later (ACCOUNT_USAGE lag):
+SELECT run_label, questions, token_credits, tagged_wh_credits, metered_agent_wh,
+       harness_credits_excluded, token_pct, wh_pct
+FROM FPA_DEMO.FPA.V_RUN_COSTS ORDER BY start_ts DESC;
+
+-- Per question
+SELECT * FROM FPA_DEMO.FPA.V_AGENT_QUESTION_COSTS WHERE run_label = 'tier_10';
+```
+
+### Which number to use
+- **Cost per question** = `token_credits + tagged_wh_credits`. This is exact, and it's what the estimator uses.
+- **Full warehouse cost** = `metered_agent_wh`. It adds idle time and the 60-second minimum on each resume. Use it when the warehouse sits mostly idle between questions.
+- **Token % vs warehouse %** = `token_pct` and `wh_pct` in `V_RUN_COSTS`. Measured so far: tokens about 98%, warehouse about 2% of attributed cost.
+
+### Notes
+- `QUERY_ATTRIBUTION_HISTORY` lags more than the agent usage view, sometimes several hours. Until it catches up, `tagged_wh_credits` shows 0 for a recent run; the agent's `reported_sql_credits` lags in the same way.
+- Agents also issue a skill-lookup `LIST` on the **user's default warehouse**. That's why `FPA_DEMO_USER`'s default is `FPA_AGENT_WH`. These queries are tagged, so they're still counted wherever they run.
+- `START_COST_RUN` also sets a session `QUERY_TAG` with the run_id, for readability in query history. Clients that set their own tag override it (Cortex Code does), but that doesn't affect attribution, which uses Snowflake's agent tags and the run window.
+- The estimator app's **Calibration source** picker lets you calibrate from selected tagged runs only.
 
 ## Notes
 

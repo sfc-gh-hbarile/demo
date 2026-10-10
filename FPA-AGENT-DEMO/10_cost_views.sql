@@ -97,3 +97,109 @@ FROM V_AGENT_REQUESTS r
 JOIN SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY h USING (request_id);
 
 SELECT * FROM V_COST_CALIBRATION;
+
+-- =====================================================================
+-- Exact attribution (see 13_agent_warehouse_tagging.sql)
+-- =====================================================================
+
+-- Every query an agent tool ran. Snowflake tags them with the agent request_id:
+--   'cortex-agent-<request_id>'            (Analyst SQL, skill LISTs, procedure CALLs via API/SQL)
+--   'snowflake-intelligence-<request_id>'  (procedure CALLs from the Snowsight agent playground / CoWork)
+-- Statements inside a stored procedure are NOT tagged; QUERY_ATTRIBUTION_HISTORY links them to the
+-- tagged CALL through ROOT_QUERY_ID, so compute is rolled up to the tagged root query.
+-- Attributed compute excludes warehouse idle time (see metered_agent_wh in V_RUN_COSTS).
+CREATE OR REPLACE VIEW V_AGENT_TOOL_QUERIES AS
+WITH roots AS (
+  SELECT REGEXP_SUBSTR(q.query_tag, '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') AS request_id,
+         q.query_id, q.start_time, q.user_name, q.role_name, q.warehouse_name, q.warehouse_size,
+         q.query_type, q.execution_status, q.total_elapsed_time / 1000 AS elapsed_s, q.execution_time / 1000 AS execution_s
+  FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY q
+  WHERE (q.query_tag LIKE 'cortex-agent-%' OR q.query_tag LIKE 'snowflake-intelligence-%')
+    AND q.start_time >= '2026-10-01'),
+attr AS (
+  SELECT COALESCE(a.root_query_id, a.query_id) AS root_id,
+         SUM(a.credits_attributed_compute) AS compute_credits,
+         SUM(COALESCE(a.credits_used_query_acceleration, 0)) AS qas_credits,
+         COUNT(*) AS attributed_queries
+  FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY a
+  WHERE a.start_time >= '2026-10-01'
+  GROUP BY 1)
+SELECT r.*, COALESCE(attr.compute_credits, 0) AS compute_credits, COALESCE(attr.qas_credits, 0) AS qas_credits,
+       COALESCE(attr.attributed_queries, 0) AS attributed_queries
+FROM roots r LEFT JOIN attr ON attr.root_id = r.query_id;
+
+-- One row per agent question: exact token credits + exact warehouse compute of its tool queries,
+-- scoped to a tagged run (COST_RUNS) by user and time window.
+CREATE OR REPLACE VIEW V_AGENT_QUESTION_COSTS AS
+WITH tq AS (
+  SELECT request_id, COUNT(*) AS tool_queries, SUM(execution_s) AS tool_execution_s,
+         SUM(compute_credits + qas_credits) AS tagged_wh_credits,
+         LISTAGG(DISTINCT warehouse_name, ',') AS warehouses
+  FROM V_AGENT_TOOL_QUERIES GROUP BY request_id)
+SELECT r.request_id, r.start_time, r.user_name, r.interface, r.models,
+       c.run_id, c.run_label, c.run_type,
+       r.token_credits,
+       COALESCE(tq.tagged_wh_credits, 0) AS tagged_wh_credits,
+       r.token_credits + COALESCE(tq.tagged_wh_credits, 0) AS total_credits,
+       r.sql_query_credits AS reported_sql_credits,       -- cross-check: should equal tagged_wh_credits
+       COALESCE(tq.tool_queries, 0) AS tool_queries, tq.tool_execution_s, tq.warehouses,
+       r.cache_read_credits, r.cache_write_credits, r.io_credits
+FROM V_AGENT_REQUESTS r
+LEFT JOIN tq ON tq.request_id = r.request_id
+LEFT JOIN FPA_DEMO.FPA.COST_RUNS c
+  ON c.user_name = r.user_name
+ AND r.start_time >= DATEADD(second, -2, c.start_ts)
+ AND r.start_time <= COALESCE(c.end_ts, CURRENT_TIMESTAMP());
+
+-- One row per tagged run.
+--  tagged_wh_credits  = exact compute of the agent's tool queries (marginal warehouse cost)
+--  metered_agent_wh   = FPA_AGENT_WH metered credits in the hours the run touched (includes idle
+--                       and 60s resume minimums; hourly granularity, so shared with anything else
+--                       on that warehouse in the same hour - by design only agent tools use it)
+--  harness_credits    = the test harness's own queries in the window (excluded from agent cost)
+CREATE OR REPLACE VIEW V_RUN_COSTS AS
+WITH q AS (
+  SELECT run_id, COUNT(*) AS questions, SUM(token_credits) AS token_credits,
+         SUM(tagged_wh_credits) AS tagged_wh_credits, SUM(reported_sql_credits) AS reported_sql_credits,
+         SUM(tool_queries) AS tool_queries
+  FROM V_AGENT_QUESTION_COSTS WHERE run_id IS NOT NULL GROUP BY run_id),
+m AS (
+  SELECT c.run_id, SUM(w.credits_used) AS metered_agent_wh
+  FROM FPA_DEMO.FPA.COST_RUNS c
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY w
+    ON w.warehouse_name = 'FPA_AGENT_WH'
+   AND w.start_time >= DATE_TRUNC('hour', c.start_ts)
+   AND w.start_time <= COALESCE(c.end_ts, CURRENT_TIMESTAMP())
+  GROUP BY c.run_id),
+h AS (
+  -- Everything else the run's user ran in the window (harness, worksheet), excluding agent tool
+  -- queries and statements whose root is an agent tool query (procedure internals)
+  SELECT c.run_id, SUM(a.credits_attributed_compute) AS harness_credits
+  FROM FPA_DEMO.FPA.COST_RUNS c
+  JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY a
+    ON a.user_name = c.user_name
+   AND a.start_time BETWEEN c.start_ts AND COALESCE(c.end_ts, CURRENT_TIMESTAMP())
+  WHERE COALESCE(a.root_query_id, a.query_id) NOT IN (SELECT query_id FROM V_AGENT_TOOL_QUERIES)
+  GROUP BY c.run_id)
+SELECT c.run_id, c.run_label, c.run_type, c.user_name, c.start_ts, c.end_ts,
+       COALESCE(q.questions, 0) AS questions,
+       ROUND(q.token_credits, 6) AS token_credits,
+       ROUND(q.tagged_wh_credits, 6) AS tagged_wh_credits,
+       ROUND(q.reported_sql_credits, 6) AS reported_sql_credits,
+       ROUND(m.metered_agent_wh, 6) AS metered_agent_wh,
+       ROUND(h.harness_credits, 6) AS harness_credits_excluded,
+       q.tool_queries,
+       ROUND(q.token_credits / NULLIF(q.questions, 0), 6) AS token_credits_per_question,
+       ROUND(q.tagged_wh_credits / NULLIF(q.questions, 0), 6) AS wh_credits_per_question,
+       ROUND(100 * q.token_credits / NULLIF(q.token_credits + q.tagged_wh_credits, 0), 2) AS token_pct,
+       ROUND(100 * q.tagged_wh_credits / NULLIF(q.token_credits + q.tagged_wh_credits, 0), 2) AS wh_pct
+FROM FPA_DEMO.FPA.COST_RUNS c
+LEFT JOIN q ON q.run_id = c.run_id
+LEFT JOIN m ON m.run_id = c.run_id
+LEFT JOIN h ON h.run_id = c.run_id;
+
+-- Validation: tagged warehouse compute should equal the agent's reported sql_query_credits
+SELECT COUNT(*) AS requests,
+       ROUND(SUM(tagged_wh_credits), 6) AS tagged, ROUND(SUM(reported_sql_credits), 6) AS reported
+FROM V_AGENT_QUESTION_COSTS;
+SELECT * FROM V_RUN_COSTS ORDER BY start_ts;

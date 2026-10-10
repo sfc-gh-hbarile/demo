@@ -8,7 +8,8 @@
 --   CALL RUN_AGENT_LOAD_TEST(50, 'tier_50');  -- ~10-14 credits, ~40 min
 -- Questions cycle Q1..Q4, so call 1-4 are FIRST asks and later calls are REPEATs.
 -- The review-package question is excluded so the test never writes workflow rows.
--- Results land in V_LOAD_TEST_COSTS once ACCOUNT_USAGE catches up (a few hours).
+-- Each run is registered in COST_RUNS (script 13). Results land in V_RUN_COSTS and
+-- V_LOAD_TEST_COSTS once ACCOUNT_USAGE catches up (a few hours).
 -- =====================================================================
 USE ROLE FPA_DEMO_ROLE; USE WAREHOUSE FPA_DEMO_WH; USE SCHEMA FPA_DEMO.FPA;
 
@@ -35,6 +36,9 @@ DECLARE
   ok BOOLEAN;
   n_ok NUMBER DEFAULT 0;
 BEGIN
+  -- Register the run so costs can be scoped to it (see 13_agent_warehouse_tagging.sql)
+  INSERT INTO FPA_DEMO.FPA.COST_RUNS (run_id, run_label, run_type, user_name, start_ts)
+    SELECT :run_id, :RUN_LABEL, 'LOAD_TEST', CURRENT_USER(), CURRENT_TIMESTAMP();
   FOR i IN 1 TO NUM_QUESTIONS DO
     qid := MOD(i - 1, ARRAY_SIZE(q)) + 1;
     qtext := GET(q, qid - 1)::VARCHAR;
@@ -58,8 +62,9 @@ BEGIN
       SELECT :run_id, :RUN_LABEL, :i, :qid, :qtext,
              IFF(:i <= 4, 'FIRST', 'REPEAT'), CURRENT_USER(), :t0, :t1, :ok, :resp;
   END FOR;
+  UPDATE FPA_DEMO.FPA.COST_RUNS SET end_ts = CURRENT_TIMESTAMP() WHERE run_id = :run_id;
   RETURN OBJECT_CONSTRUCT('run_id', run_id, 'run_label', RUN_LABEL, 'calls', NUM_QUESTIONS, 'succeeded', n_ok,
-    'next_step', 'Costs appear in FPA_DEMO.FPA.V_LOAD_TEST_COSTS after ACCOUNT_USAGE latency (up to a few hours)');
+    'next_step', 'Costs appear in FPA_DEMO.FPA.V_RUN_COSTS / V_LOAD_TEST_COSTS after ACCOUNT_USAGE latency (up to a few hours)');
 END;
 $$;
 

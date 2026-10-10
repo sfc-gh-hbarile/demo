@@ -1,6 +1,7 @@
 -- =====================================================================
 -- 07 - Cortex Agent: semantic view + search + custom tools + chart + skill
--- Prereqs: scripts 02-06. Owned by FPA_DEMO_ROLE (so USAGE is implicit).
+-- Prereqs: scripts 02-06 and FPA_AGENT_WH (script 13). Owned by FPA_DEMO_ROLE (so USAGE is implicit).
+-- Tools run on the dedicated FPA_AGENT_WH so its metering is agent-only cost.
 -- =====================================================================
 USE ROLE FPA_DEMO_ROLE; USE WAREHOUSE FPA_DEMO_WH;
 
@@ -81,7 +82,7 @@ CREATE OR REPLACE AGENT FPA_DEMO.FPA.FPA_AGENT
       semantic_view: "FPA_DEMO.FPA.FPA_SEMANTIC_VIEW"
       execution_environment:
         type: "warehouse"
-        warehouse: "FPA_DEMO_WH"
+        warehouse: "FPA_AGENT_WH"
     fpa_search:
       search_service: "FPA_DEMO.FPA.FPA_ASSUMPTIONS_SEARCH"
       max_results: "4"
@@ -92,13 +93,13 @@ CREATE OR REPLACE AGENT FPA_DEMO.FPA.FPA_AGENT
       identifier: "FPA_DEMO.FPA.RUN_SCENARIO"
       execution_environment:
         type: "warehouse"
-        warehouse: "FPA_DEMO_WH"
+        warehouse: "FPA_AGENT_WH"
     submit_review_package:
       type: "procedure"
       identifier: "FPA_DEMO.FPA.SUBMIT_REVIEW_PACKAGE"
       execution_environment:
         type: "warehouse"
-        warehouse: "FPA_DEMO_WH"
+        warehouse: "FPA_AGENT_WH"
   $$;
 
 -- Validation: expect owner FPA_DEMO_ROLE, 5 tools, 1 skill
