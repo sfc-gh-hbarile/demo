@@ -62,8 +62,8 @@ def load_search_daily() -> float:
 
 
 def project(users, qpu_day, repeat_pct, cred_first, cred_repeat, sql_per_q,
-            wh_mode, wh_hours_day, search_day, work_days_month, price):
-    """Credits and dollars per day / week / month / year."""
+            wh_mode, wh_hours_day, search_day, work_days_month, price, wh_price=None):
+    """Credits and dollars per day / week / month / year. price = $/AI Credit, wh_price = $/Platform Credit."""
     q_day = users * qpu_day
     first_q = q_day * (1 - repeat_pct / 100)
     repeat_q = q_day * repeat_pct / 100
@@ -75,8 +75,11 @@ def project(users, qpu_day, repeat_pct, cred_first, cred_repeat, sql_per_q,
     for period, f in factors.items():
         credits = {k: v * f for k, v in day.items()}
         total = sum(credits.values())
+        # Agent tokens and Cortex Search bill in AI Credits; warehouse compute bills in Platform Credits
+        dollars = (credits["Agent tokens"] + credits["Cortex Search"]) * price \
+            + credits["Warehouse"] * (price if wh_price is None else wh_price)
         rows.append({"Period": period, "Questions": q_day * f, **credits,
-                     "Total credits": total, "Total $": total * price})
+                     "Total credits": total, "Total $": dollars})
     return pd.DataFrame(rows)
 
 
@@ -125,7 +128,10 @@ else:
 
 # ---------------- Inputs ----------------
 st.sidebar.header("Inputs")
-price = st.sidebar.number_input("Price per credit ($)", min_value=0.0, value=3.00, step=0.25, format="%.2f")
+price = st.sidebar.number_input("AI Credit price ($)", min_value=0.0, value=2.00, step=0.10, format="%.2f",
+                                help="Agent tokens and Cortex Search bill in AI Credits ($2.00 on demand, global).")
+wh_price = st.sidebar.number_input("Warehouse (Platform) Credit price ($)", min_value=0.0, value=3.00, step=0.25, format="%.2f",
+                                   help="Warehouse compute bills in Platform Credits (e.g. $3.00 Enterprise, AWS US East).")
 users = int(st.sidebar.number_input("Number of users", min_value=1, value=25, step=1))
 preset = st.sidebar.radio("Questions per user per day", ["10", "25", "50", "Custom"], horizontal=True)
 qpu_day = (int(st.sidebar.number_input("Custom questions per user per day", min_value=1, value=15, step=1))
@@ -163,7 +169,7 @@ search_day = st.sidebar.number_input("Cortex Search credits per day", min_value=
 
 # ---------------- Projection ----------------
 proj = project(users, qpu_day, repeat_pct, cred_first, cred_repeat, sql_per_q,
-               wh_mode, wh_hours, search_day, work_days, price)
+               wh_mode, wh_hours, search_day, work_days, price, wh_price)
 by = proj.set_index("Period")
 
 cols = st.columns(4)
@@ -186,7 +192,7 @@ show["Questions"] = show["Questions"].map(lambda v: f"{v:,.0f}")
 show["Total $"] = proj["Total $"].map(money)
 st.dataframe(show, hide_index=True, use_container_width=True)
 st.caption(f"{users} users x {qpu_day} questions/day = {users * qpu_day:,} questions/day | weekly = 5 working days | "
-           f"monthly = {work_days} days | yearly = 12 months | ${price:.2f}/credit")
+           f"monthly = {work_days} days | yearly = 12 months | ${price:.2f}/AI Credit, ${wh_price:.2f}/Platform Credit")
 
 left, right = st.columns(2)
 with left:
@@ -194,7 +200,7 @@ with left:
     tier_rows = []
     for t in TIERS:
         m = project(users, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
-                    wh_mode, wh_hours, search_day, work_days, price).set_index("Period")
+                    wh_mode, wh_hours, search_day, work_days, price, wh_price).set_index("Period")
         tier_rows.append({"Questions / user / day": t, "Daily": money(m.loc["Daily", "Total $"]),
                           "Monthly": money(m.loc["Monthly", "Total $"]), "Yearly": money(m.loc["Yearly", "Total $"]),
                           "Monthly credits": f'{m.loc["Monthly", "Total credits"]:,.1f}'})
@@ -205,7 +211,7 @@ with right:
     for u in sorted({1, 5, 10, 25, 50, 100, 250, 500, users}):
         for t in TIERS:
             m = project(u, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
-                        wh_mode, wh_hours, search_day, work_days, price).set_index("Period")
+                        wh_mode, wh_hours, search_day, work_days, price, wh_price).set_index("Period")
             curve.append({"Users": u, "Questions/user/day": str(t), "Monthly $": m.loc["Monthly", "Total $"]})
     chart = alt.Chart(pd.DataFrame(curve)).mark_line(point=True).encode(
         x="Users:Q", y=alt.Y("Monthly $:Q", axis=alt.Axis(format="$,.0f")),
@@ -219,7 +225,7 @@ st.subheader("Observed actuals (this account)")
 if allreq is not None and allreq["requests"]:
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Agent requests measured", f"{int(allreq['requests'])}")
-    a2.metric("Avg token credits / question", f"{measured_all:.4f}", f"${measured_all * price:.2f} per question",
+    a2.metric("Avg token credits / question", f"{measured_all:.4f}", f"${measured_all * price + measured_sql * wh_price:.2f} per question",
               delta_color="off")
     a3.metric("Input tokens served from cache", f"{float(allreq['cache_hit'] or 0):.0%}")
     a4.metric("Credits spent on cache writes", f"{float(allreq['cache_write_share'] or 0):.0%}")
@@ -252,7 +258,7 @@ with st.expander("How this estimate works"):
 - **Agent token credits/day** = first asks x first-ask credits + repeats x repeat credits.
 - **Warehouse credits/day** = questions x SQL credits per question, *or* awake hours x 1 credit/hour (XS).
 - **Cortex Search credits/day** = measured or entered daily serving cost.
-- **Week** = 5 working days, **month** = working days per month, **year** = 12 months, **$** = credits x price.
+- **Week** = 5 working days, **month** = working days per month, **year** = 12 months, **$** = AI Credits (tokens, search) x AI Credit price + warehouse credits x Platform Credit price.
 - Estimates reflect this demo's questions and model. Re-measure with your own questions before quoting.
 - The resource monitor caps **warehouse** credits only; use a Snowflake budget to cap AI spend.
 """)

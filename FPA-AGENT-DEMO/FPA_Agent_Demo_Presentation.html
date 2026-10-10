@@ -22,7 +22,7 @@
     { "id": "show-variance", "title": "Show: Q1 variance", "producerNotes": "FACT_PL validation and FPA_AGENT Q1 answer." },
     { "id": "show-forecast-scenario", "title": "Show: Q2 forecast change and Q3 scenario", "producerNotes": "FPA_AGENT Q2 answer; RUN_SCENARIO(-8,2,1,'ALL')." },
     { "id": "show-workflow", "title": "Show: Q4 documents and Q5 human-approved workflow", "producerNotes": "ASSUMPTION_DOCS; SUBMIT/APPROVE/RESET procedures." },
-    { "id": "show-cost", "title": "Show: what it costs", "producerNotes": "Measured from tagged runs (V_RUN_COSTS, V_COST_CALIBRATION); small sample." },
+    { "id": "show-cost", "title": "Show: what it costs", "producerNotes": "Measured from tagged runs (V_RUN_COSTS, V_COST_CALIBRATION). Validated 2026-10-10: token rates match Service Consumption Table 6(d) (effective 2026-10-09); per-request credits reconcile to METERING_DAILY_HISTORY CORTEX_AGENTS. AI Credit $2.00, Platform Credit $3.00 on demand. Sonnet figure from a 4-question test on FPA_AGENT_SONNET." },
     { "id": "tell-recap", "title": "Tell: what you saw", "producerNotes": "Narrative." },
     { "id": "tell-extend", "title": "Tell: extending it for FP&A teams", "producerNotes": "Ideas, not built in the demo." },
     { "id": "next-steps", "title": "From demo to pilot", "producerNotes": "Narrative." },
@@ -369,37 +369,35 @@ SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
 <!-- 8. Show: cost -->
 <section class="slide" id="show-cost">
   <div class="tag"><span class="phase ph-show">Show</span>What it costs</div>
-  <h1>Cost per question is measured, not estimated</h1>
-  <div class="sub">Every agent request is metered. Snowflake tags each query an agent tool runs with the request ID, so the warehouse cost behind each question is exact. The Cost Estimator dashboard projects cost from these measured rates.</div>
+  <h1>About $0.40 per question, validated against the bill</h1>
+  <div class="sub">Every agent request is metered per token at the published rate, and Snowflake tags each query an agent tool runs with the request ID, so the warehouse cost behind each question is exact. Agent tokens bill in <b>AI Credits</b> ($2.00 on demand); warehouse compute bills in <b>Platform Credits</b> (for example $3.00, Enterprise, AWS US East).</div>
   <div class="kpis">
-    <div class="kpi"><div class="l">Token credits, first ask</div><div class="v">0.196</div><div class="d">about $0.59 at $3/credit</div></div>
-    <div class="kpi"><div class="l">Token credits, repeat</div><div class="v">0.114</div><div class="d">42% cheaper (prompt cache)</div></div>
-    <div class="kpi"><div class="l">Warehouse per question</div><div class="v">~0.003</div><div class="d">exact, from tagged tool queries</div></div>
-    <div class="kpi"><div class="l">Split</div><div class="v">98% / 2%</div><div class="d">AI tokens / warehouse</div></div>
+    <div class="kpi"><div class="l">First ask</div><div class="v">$0.40</div><div class="d">0.196 AI Credits + 0.003 warehouse</div></div>
+    <div class="kpi"><div class="l">Repeat question</div><div class="v">$0.24</div><div class="d">0.114 AI Credits (prompt cache)</div></div>
+    <div class="kpi"><div class="l">Same agent on Sonnet 4.6</div><div class="v">$0.27</div><div class="d">~31% cheaper, same answers (4-question test)</div></div>
+    <div class="kpi"><div class="l">Split</div><div class="v">97% / 3%</div><div class="d">AI tokens / warehouse, in dollars</div></div>
   </div>
   <div class="grid g2">
     <div class="card">
-      <h3>Example: 25 users, 30% repeated questions, $3.00/credit</h3>
+      <h3>Example: 25 users, 30% repeats, measured rates (orchestration <code>auto</code>, which resolved to claude-opus-4-8)</h3>
       <div class="tw"><table>
         <thead><tr><th>Questions / user / day</th><th class="num">Daily</th><th class="num">Monthly</th><th class="num">Yearly</th></tr></thead>
         <tbody>
-          <tr><td>10</td><td class="num">$131</td><td class="num">$2,746</td><td class="num">$32,946</td></tr>
-          <tr><td>25</td><td class="num">$327</td><td class="num">$6,864</td><td class="num">$82,366</td></tr>
-          <tr><td>50</td><td class="num">$654</td><td class="num">$13,728</td><td class="num">$164,732</td></tr>
+          <tr><td>10</td><td class="num">$88</td><td class="num">$1,847</td><td class="num">$22,163</td></tr>
+          <tr><td>25</td><td class="num">$220</td><td class="num">$4,617</td><td class="num">$55,408</td></tr>
+          <tr><td>50</td><td class="num">$440</td><td class="num">$9,235</td><td class="num">$110,817</td></tr>
         </tbody>
       </table></div>
-      <div class="note">21 working days per month. Based on a small sample of this demo's questions; re-measure with your own questions before quoting.</div>
+      <div class="note">$2.00 per AI Credit and $3.00 per Platform Credit (on-demand list prices; capacity contracts differ), 21 working days per month. Measured on this demo's questions; re-measure with the customer's own questions before quoting.</div>
     </div>
     <div class="card">
-      <h3>How to measure it yourself</h3>
-<pre>CALL FPA_DEMO.FPA.START_COST_RUN('pilot_wk1','DEMO_SESSION');
--- ask the agent your questions ...
-CALL FPA_DEMO.FPA.END_COST_RUN('&lt;run_id&gt;');
-
--- a few hours later (usage views lag)
-SELECT run_label, questions, token_credits,
-       tagged_wh_credits, token_pct, wh_pct
-FROM FPA_DEMO.FPA.V_RUN_COSTS;</pre>
+      <h3>How the number was validated</h3>
+      <ul>
+        <li><b>Rates:</b> billed credits per million tokens (3.25 input, 16.26 output, 4.07 cache write, 0.33 cache read) match the Service Consumption Table, Table 6(d)</li>
+        <li><b>Bill:</b> per-request credits (4.059) equal the <code>CORTEX_AGENTS</code> line in <code>METERING_DAILY_HISTORY</code> (4.059)</li>
+        <li><b>Driver:</b> about 148K input tokens per question (instructions, tools, semantic view, skill, tool results), mostly served from cache</li>
+        <li><b>Levers:</b> pin a smaller orchestration model, keep instructions and tool descriptions lean, and reuse threads for follow-up questions</li>
+      </ul>
       <div class="note">The resource monitor caps warehouse credits only. Use a Snowflake budget to cap AI spend.</div>
     </div>
   </div>
@@ -504,6 +502,7 @@ FROM FPA_DEMO.FPA.V_RUN_COSTS;</pre>
         <li>Reset the workflow for the next presenter</li>
         <li><b>No package created?</b> Use a new chat</li>
         <li><b>Approval says NOT_FOUND?</b> Use the exact ID, and don't reset between submit and approve</li>
+        <li><b>Cost questions?</b> AI Credits ($2.00) and Platform Credits ($3.00) are priced separately; see slide 8</li>
         <li><b>Dashboard can't read views?</b> The role needs <code>USAGE_VIEWER</code> and <code>GOVERNANCE_VIEWER</code></li>
       </ul>
     </div>

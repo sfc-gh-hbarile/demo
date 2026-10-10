@@ -58,6 +58,7 @@ Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**
 | 11 | `11_load_test.sql` | FPA_DEMO_ROLE | `RUN_AGENT_LOAD_TEST(n, label)`: asks the agent n questions (first asks, then repeats) and logs each call | 8/8 calls succeed; costs appear after the usage lag |
 | 12 | `12_deploy_cost_estimator_app.sql` + `cost_estimator_app/` | FPA_DEMO_ROLE | Deploys the **FP&A Agent Cost Estimator** Streamlit app | `SHOW STREAMLITS` returns one row |
 | 13 | `13_agent_warehouse_tagging.sql` | ACCOUNTADMIN, then FPA_DEMO_ROLE | Dedicated `FPA_AGENT_WH` for agent tools, `COST_RUNS` table, `START_COST_RUN` / `END_COST_RUN` | Tagged warehouse credits = agent-reported SQL credits for 20 of 20 requests |
+| 14 | `14_model_cost_comparison.sql` | FPA_DEMO_ROLE | `FPA_AGENT_SONNET` (same spec, claude-sonnet-4-6), the 4-question comparison, and billing reconciliation | Same answers; about 31% fewer credits; agent credits = metered `CORTEX_AGENTS` |
 | 99 | `99_cleanup.sql` | ACCOUNTADMIN | Drops everything. **Run only when finished.** | |
 
 `FPA_Agentic_Finance_Demo_Prompt.md` is the original build prompt.
@@ -162,7 +163,8 @@ Notes:
 ### Dashboard inputs
 | Input | Default |
 |---|---|
-| Price per credit | **$3.00** (editable) |
+| AI Credit price | **$2.00** (editable). Agent tokens and Cortex Search bill in AI Credits |
+| Warehouse (Platform) Credit price | **$3.00** (editable). Warehouse compute bills in Platform Credits |
 | Number of users | 25 |
 | Questions per user per day | presets **10 / 25 / 50**, or custom |
 | Working days per month | 21 (weekly = 5 days, yearly = 12 months) |
@@ -183,9 +185,9 @@ questions/day   = users × questions per user per day
 agent credits   = questions × (1 - repeat%) × first_ask_credits + questions × repeat% × repeat_credits
 warehouse       = questions × sql_credits_per_question     (or awake_hours × 1 credit/hr for XS)
 total credits   = agent + warehouse + search_per_day;  week = ×5, month = ×working days, year = month × 12
-cost ($)        = total credits × price per credit
+cost ($)        = (agent + search credits) × AI Credit price + warehouse credits × Platform Credit price
 ```
-I unit-tested the app's formula against a hand calculation (25 users × 10 questions, 30% repeats, 0.25/0.15 credits, $3), and it matched for every period and for both warehouse methods.
+I unit-tested the app's formula against hand calculations, including one first-ask question at measured rates (0.196 AI Credits × $2.00 + 0.003 warehouse × $3.00 = $0.401), and it matched for every period and both warehouse methods.
 
 ### Measured in this account (synthetic demo, 9 Oct 2026, model `claude-opus-4-8` via `auto`)
 | Segment | Calls | Avg token credits | Cache-write share | Input served from cache |
@@ -210,12 +212,26 @@ Warehouse SQL attributed to agent calls averaged about 0.003 credits per questio
 - The answer itself is **not** cached; every repeat still runs the tools. The saving comes only from token-level prompt caching, and only while the cache is warm (calls minutes apart). Don't assume a fixed discount.
 - These figures come from a small sample (one call per question per attempt). Run larger tiers before quoting a customer.
 
-### Example: measured rates, 25 users, 30% repeats, $3.00/credit
+### Example: measured rates, 25 users, 30% repeats, $2.00/AI Credit and $3.00/Platform Credit
 | Questions / user / day | Daily | Weekly | Monthly | Yearly |
 |---|---|---|---|---|
-| 10 | 43.6 cr / $131 | 218 cr / $654 | 915 cr / $2,746 | 10,982 cr / $32,946 |
-| 25 | 109 cr / $327 | 545 cr / $1,634 | 2,288 cr / $6,864 | 27,455 cr / $82,366 |
-| 50 | 218 cr / $654 | 1,090 cr / $3,268 | 4,576 cr / $13,728 | 54,911 cr / $164,732 |
+| 10 | $88 | $440 | $1,847 | $22,163 |
+| 25 | $220 | $1,099 | $4,617 | $55,408 |
+| 50 | $440 | $2,199 | $9,235 | $110,817 |
+
+### Validation of cost per question (10 Oct 2026)
+An earlier version of this README priced every credit at $3.00 and showed **$0.59 per question**. That was wrong: agent tokens bill in AI Credits, which have their own price. The checks:
+
+| Check | Result |
+|---|---|
+| **Billed token rates** | 3.25 input / 16.26 output / 4.07 cache write / 0.33 cache read credits per million tokens for `claude-opus-4-8`. These **match** the Snowflake Service Consumption Table, Table 6(d), "Cortex Agents" (effective 9 Oct 2026). |
+| **Reconciles to the bill** | Per-request credits in `CORTEX_AGENT_USAGE_HISTORY` (4.059) **equal** the `CORTEX_AGENTS` service type in `METERING_DAILY_HISTORY` (1.0025 + 3.0568). |
+| **Credit type** | Cortex Agents and Cortex Search bill in **AI Credits**, $2.00 on demand (global; $2.20 regional; capacity tiers $1.88 to $1.96, Table 2(b)). The Platform Credit discount doesn't apply to AI Credits. Warehouses bill in **Platform Credits**: $3.00 Enterprise, AWS US East. |
+| **Corrected cost** | First ask about **$0.40** (0.196 × $2.00 + 0.003 × $3.00); repeat about **$0.24**. AI tokens are about 97% of the dollars. |
+| **What drives it** | About 148K input tokens per question: instructions, tool definitions, semantic view, skill, and tool results. 81% are served from cache. `auto` orchestration resolved to `claude-opus-4-8`. |
+| **Model lever** | `FPA_AGENT_SONNET` (same spec, `claude-sonnet-4-6`) returned the same numbers on Q1 to Q4 and cost about **31% less** (0.130 vs 0.190 credits on average, about $0.27 per question). It saved 6 to 78% depending on the question. This is one run per question; Sonnet produced more output tokens on Q1 and Q2. |
+
+Before quoting a customer: use their contract's AI Credit price, run `RUN_AGENT_LOAD_TEST` with their own questions, and compare `auto` with a pinned model.
 
 **Caveats:**
 - These are estimates based on this demo's question mix, tools and model.
@@ -258,7 +274,7 @@ SELECT * FROM FPA_DEMO.FPA.V_AGENT_QUESTION_COSTS WHERE run_label = 'tier_10';
 ### Which number to use
 - **Cost per question** = `token_credits + tagged_wh_credits`. This is exact, and it's what the estimator uses.
 - **Full warehouse cost** = `metered_agent_wh`. It adds idle time and the 60-second minimum on each resume. Use it when the warehouse sits mostly idle between questions.
-- **Token % vs warehouse %** = `token_pct` and `wh_pct` in `V_RUN_COSTS`. Measured so far: tokens about 98%, warehouse about 2% of attributed cost.
+- **Token % vs warehouse %** = `token_pct` and `wh_pct` in `V_RUN_COSTS`. Measured so far: tokens about 98% of attributed **credits** and about 97% of **dollars** (AI Credits at $2.00, warehouse at $3.00).
 
 ### Notes
 - `QUERY_ATTRIBUTION_HISTORY` lags more than the agent usage view, sometimes several hours. Until it catches up, `tagged_wh_credits` shows 0 for a recent run; the agent's `reported_sql_credits` lags in the same way.
