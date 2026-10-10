@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="snowflake-source" content="cortex-agent-authored">
+<title>Agentic FP&amp;A on Snowflake | Demo Presentation (Acme Corp, synthetic)</title>
+<script type="application/json" id="snowflake-report-metadata">
+{
+  "generated": "2026-10-10",
+  "intent": "Presenter aid for the FPA-AGENT-DEMO: Tell / Show / Tell walkthrough of the Acme Corp (synthetic) FP&A Cortex Agent demo, plus ways to extend it for FP&A teams",
+  "dataSources": [
+    { "type": "query", "warehouse": "FPA_DEMO_WH", "sql": "SELECT region, gm_actual, gm_plan FROM FPA_DEMO.FPA.FACT_PL (see 02_synthetic_data.sql validation)" },
+    { "type": "query", "warehouse": "FPA_DEMO_WH", "sql": "CALL FPA_DEMO.FPA.RUN_SCENARIO(-8, 2, 1, 'ALL')" },
+    { "type": "query", "warehouse": "FPA_DEMO_WH", "sql": "SELECT * FROM FPA_DEMO.FPA.V_RUN_COSTS / V_COST_CALIBRATION" }
+  ],
+  "sections": [
+    { "id": "title", "title": "Title and agenda", "producerNotes": "Narrative." },
+    { "id": "tell-problem", "title": "Tell: the FP&A problem and the planted story", "producerNotes": "Story planted in 02_synthetic_data.sql." },
+    { "id": "tell-architecture", "title": "Tell: what we built", "producerNotes": "Objects from scripts 01-13 in FPA-AGENT-DEMO." },
+    { "id": "show-runsheet", "title": "Show: demo run sheet", "producerNotes": "Expected answers observed when testing FPA_AGENT on 2026-10-09." },
+    { "id": "show-variance", "title": "Show: Q1 variance", "producerNotes": "FACT_PL validation and FPA_AGENT Q1 answer." },
+    { "id": "show-forecast-scenario", "title": "Show: Q2 forecast change and Q3 scenario", "producerNotes": "FPA_AGENT Q2 answer; RUN_SCENARIO(-8,2,1,'ALL')." },
+    { "id": "show-workflow", "title": "Show: Q4 documents and Q5 human-approved workflow", "producerNotes": "ASSUMPTION_DOCS; SUBMIT/APPROVE/RESET procedures." },
+    { "id": "show-cost", "title": "Show: what it costs", "producerNotes": "Measured from tagged runs (V_RUN_COSTS, V_COST_CALIBRATION); small sample." },
+    { "id": "tell-recap", "title": "Tell: what you saw", "producerNotes": "Narrative." },
+    { "id": "tell-extend", "title": "Tell: extending it for FP&A teams", "producerNotes": "Ideas, not built in the demo." },
+    { "id": "next-steps", "title": "From demo to pilot", "producerNotes": "Narrative." },
+    { "id": "appendix-build", "title": "Appendix A: build and run order", "producerNotes": "Scripts in FPA-AGENT-DEMO." },
+    { "id": "appendix-presenter", "title": "Appendix B: presenter checklist", "producerNotes": "Reset and timing notes." }
+  ]
+}
+</script>
+<style>
+:root{--blue:#29B5E8;--navy:#11567F;--dark:#0B2A3C;--ink:#1d2b36;--mute:#5b6b78;--bg:#f4f8fb;--card:#fff;--line:#d8e3ec;--green:#2e9e6b;--amber:#e0902b;--red:#c2410c}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#0b1f2c;color:var(--ink);overflow:hidden}
+.deck{position:relative;width:100vw;height:100vh}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:34px 56px 64px;background:var(--bg);overflow:auto}
+.slide.active{display:flex}
+.tag{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:6px}
+.phase{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:3px 9px;border-radius:20px;margin-right:8px;vertical-align:middle}
+.ph-tell{background:#e6f5fc;color:var(--navy)}
+.ph-show{background:#fdf0dd;color:#9a5a0c}
+h1{font-size:30px;color:var(--dark);line-height:1.15;margin-bottom:6px}
+.sub{font-size:15px;color:var(--mute);margin-bottom:16px;max-width:1080px;line-height:1.45}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#e6f5fc;color:var(--navy);padding:1px 6px;border-radius:4px;font-size:.9em}
+.grid{display:grid;gap:16px;min-height:0;align-items:start}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:1fr 1fr}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 17px;display:flex;flex-direction:column}
+.card h3{font-size:16px;color:var(--navy);margin-bottom:8px}
+.card p{font-size:13.5px;line-height:1.45;color:var(--ink)}
+.card ul{list-style:none}
+.card li{font-size:13.5px;line-height:1.42;padding:4px 0 4px 17px;position:relative}
+.card li:before{content:"";position:absolute;left:0;top:11px;width:7px;height:7px;border-radius:50%;background:var(--blue)}
+.card.dark{background:var(--dark);border-color:var(--dark)}
+.card.dark h3{color:var(--blue)}
+.card.dark li,.card.dark p,.card.dark .wfs div{color:#e8f4fb}
+.quote{margin-top:14px;font-size:15px;color:var(--navy);font-weight:600;border-left:4px solid var(--blue);padding:7px 14px;background:#e6f5fc;border-radius:0 8px 8px 0}
+.say{margin-top:12px;font-size:13px;color:#7a4a0a;background:#fdf0dd;border-left:4px solid var(--amber);padding:7px 12px;border-radius:0 8px 8px 0;line-height:1.45}
+.say b{color:#7a4a0a}
+.note{font-size:12px;color:var(--mute);margin-top:10px}
+/* agenda */
+.ttt{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr;flex:1;min-height:0}
+.st{background:#fff;border:1px solid var(--line);border-top:5px solid var(--blue);border-radius:12px;padding:16px 18px}
+.st.show{border-top-color:var(--amber)}
+.st .n{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue)}
+.st.show .n{color:var(--amber)}
+.st h3{font-size:19px;color:var(--dark);margin:2px 0 8px}
+.st ul{list-style:none}
+.st li{font-size:13.5px;line-height:1.42;padding:3px 0 3px 17px;position:relative}
+.st li:before{content:"";position:absolute;left:0;top:10px;width:7px;height:7px;border-radius:50%;background:#9bb3c4}
+.arr{display:flex;align-items:center;justify-content:center;color:var(--blue);font-size:26px;font-weight:700}
+/* flow */
+.flow{display:grid;grid-template-columns:1fr 40px 1.7fr 40px 1fr;flex:1;min-height:0;align-items:stretch}
+.col{display:flex;flex-direction:column;gap:9px}
+.hd{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);text-align:center}
+.box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:13px;text-align:center;flex:1;display:flex;flex-direction:column;justify-content:center}
+.box small{display:block}
+.box b{display:block;color:var(--navy);font-size:14px;margin-bottom:2px}
+.box small{color:var(--mute);font-size:11.5px;line-height:1.35}
+.sf{background:linear-gradient(160deg,#0f4c6e,#0B2A3C);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:7px}
+.sf .hd{color:var(--blue)}
+.layer{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:9px;padding:9px 12px;color:#e8f4fb;font-size:12.3px;flex:1;display:block;line-height:1.45}
+.layer b:first-child{display:block;margin-bottom:2px}
+.layer b{color:#fff;font-size:13.3px}
+.layer code{background:rgba(255,255,255,.14);color:#cfefff}
+.layer.hi{background:rgba(41,181,232,.25);border-color:var(--blue)}
+.layer.have{background:rgba(46,158,107,.28);border-color:var(--green)}
+/* tables */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:8px 11px;font-size:13px;line-height:1.4;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--dark);color:#fff;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
+tr:last-child td{border-bottom:0}
+td.k{font-weight:700;color:var(--navy);white-space:nowrap}
+td.num,th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.neg{color:var(--red);font-weight:700}
+.pos{color:var(--green);font-weight:700}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi .l{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.kpi .v{font-size:26px;font-weight:800;color:var(--dark);margin-top:3px}
+.kpi .d{font-size:12.5px;color:var(--mute);margin-top:2px}
+/* bars */
+.bars{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+.bar{display:grid;grid-template-columns:150px 1fr 60px;align-items:center;gap:10px;font-size:13px}
+.bar .t{height:16px;background:#e6eef4;border-radius:8px;position:relative;overflow:hidden}
+.bar .f{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:var(--blue)}
+.bar .f.p{background:#9bb3c4}
+/* workflow */
+.wf{display:flex;flex-direction:column;gap:8px}
+.wfs{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.4}
+.wfs i{flex:0 0 24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-style:normal;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px}
+.wfs i.h{background:var(--amber)}
+.legend{font-size:11.5px;color:#9bb3c4;margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--amber);vertical-align:middle;margin-right:4px}
+pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;background:#0b2a3c;color:#d6eefa;padding:11px 13px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+.idea{background:#fff;border:1px solid var(--line);border-left:5px solid var(--blue);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.idea .c{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--blue)}
+.idea .h{font-size:14.5px;font-weight:700;color:var(--dark)}
+.idea .b{font-size:12.8px;color:var(--ink);line-height:1.4}
+.idea .s{font-size:11.8px;color:var(--mute);margin-top:auto}
+.idea .s b{color:var(--navy)}
+.cover{background:linear-gradient(150deg,#0B2A3C 0%,#11567F 65%,#29B5E8 130%);color:#fff;justify-content:center}
+.cover h1{color:#fff;font-size:42px;max-width:900px}
+.cover .sub{color:#cfe9f7;font-size:18px;max-width:900px}
+.cover .tag{color:#9fdcf5}
+.pill{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:20px;font-size:13px;margin:4px 6px 0 0}
+.nav{position:fixed;bottom:12px;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:14px;z-index:5}
+.nav button{background:var(--navy);color:#fff;border:0;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
+.nav span{color:#fff;background:var(--navy);font-size:12px;padding:5px 10px;border-radius:12px}
+@media (max-width:900px){
+  .g3,.g2,.g4,.ttt,.flow,.kpis{grid-template-columns:1fr}
+  .arr{transform:rotate(90deg);height:30px}
+  .slide{padding:22px 16px 64px}
+  h1{font-size:23px}.cover h1{font-size:30px}
+  .bar{grid-template-columns:110px 1fr 50px}
+}
+@media print{body{overflow:visible;background:#fff}.slide{display:flex!important;position:relative;height:100vh;page-break-after:always}.nav{display:none}}
+</style>
+</head>
+<body>
+<div class="deck">
+
+<!-- 1. Title -->
+<section class="slide active cover" id="title">
+  <div class="tag">Snowflake demo | synthetic data</div>
+  <h1>Agentic FP&amp;A on Snowflake</h1>
+  <div class="sub">A Cortex Agent that explains variance, compares forecast versions, runs approved scenarios, reads planning documents, and prepares a review package that waits for human approval. Fictional company: Acme Corp.</div>
+  <div style="margin-top:18px">
+    <span class="pill">Tell: the problem and what we built</span>
+    <span class="pill">Show: five questions, live</span>
+    <span class="pill">Tell: what it means and where to take it</span>
+  </div>
+  <div class="note" style="color:#9fdcf5;margin-top:26px">All data in this demo is synthetic. Use the arrow keys or the buttons below to move between slides.</div>
+</section>
+
+<!-- 2. Tell: problem -->
+<section class="slide" id="tell-problem">
+  <div class="tag"><span class="phase ph-tell">Tell</span>The problem</div>
+  <h1>Finance spends close week finding the answer, not acting on it</h1>
+  <div class="sub">Acme Corp has three regions and three product lines. Q3 is closed, and Q4 is forecast in two versions. Something went wrong in EMEA, and leadership wants the why, the outlook, and a review package before the forecast meeting.</div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>What FP&amp;A does today</h3>
+      <ul>
+        <li>Pulls actuals and plan into spreadsheets to rebuild variance by hand</li>
+        <li>Hunts through email and decks for why the forecast changed</li>
+        <li>Rebuilds scenario math each time someone asks "what if"</li>
+        <li>Chases budget owners for sign-off over email</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>The story hidden in the data</h3>
+      <ul>
+        <li><b>EMEA, from July:</b> Core Platform price <span class="neg">-6%</span> (competitive discounting)</li>
+        <li><b>EMEA Advisory Services:</b> unit cost <span class="neg">+12%</span> (contractor rates)</li>
+        <li><b>EMEA opex</b> <span class="neg">+3%</span> (backfill)</li>
+        <li><b>APAC Data Products</b> price <span class="pos">+3%</span></li>
+        <li>North America on plan</li>
+      </ul>
+    </div>
+    <div class="card dark">
+      <h3>What the agent has to do</h3>
+      <ul>
+        <li>Find the variance and split it into price, volume, and cost</li>
+        <li>Explain what changed between forecast <code>FY26_AUG</code> and <code>FY26_SEP</code>, and why</li>
+        <li>Run a scenario on approved logic, not improvised math</li>
+        <li>Quote the documented assumptions</li>
+        <li>Prepare a review package that a person must approve</li>
+      </ul>
+    </div>
+  </div>
+  <div class="say"><b>Say:</b> "Everything you'll see runs on governed data in Snowflake. The agent doesn't guess: each number comes from an approved metric or an approved procedure, and you can see which one."</div>
+</section>
+
+<!-- 3. Tell: architecture -->
+<section class="slide" id="tell-architecture">
+  <div class="tag"><span class="phase ph-tell">Tell</span>What we built</div>
+  <h1>One governed layer serving the agent and the dashboard</h1>
+  <div class="sub">Everything lives in <code>FPA_DEMO.FPA</code>, is owned by a dedicated demo role, and is built from numbered SQL scripts in the repo.</div>
+  <div class="flow">
+    <div class="col">
+      <div class="hd">Data</div>
+      <div class="box"><b>Actuals and plan</b><small><code>FACT_PL</code>: Jan to Sep 2026 by month, entity, and product</small></div>
+      <div class="box"><b>Forecast versions</b><small><code>FACT_FORECAST</code>: Oct to Dec, <code>FY26_AUG</code> vs <code>FY26_SEP</code>, with a note on every change</small></div>
+      <div class="box"><b>Planning documents</b><small><code>ASSUMPTION_DOCS</code>: headcount, pricing, FX, methodology, EMEA review</small></div>
+      <div class="box"><b>Owners</b><small><code>DIM_ENTITY</code>: regional finance owners (the approvers)</small></div>
+    </div>
+    <div class="arr">&#8594;</div>
+    <div class="col sf">
+      <div class="hd">Snowflake: FP&amp;A agent</div>
+      <div class="layer have"><b>Semantic view</b><code>FPA_SEMANTIC_VIEW</code>: approved revenue, gross margin, opex, operating income, price, units, and unit cost metrics</div>
+      <div class="layer have"><b>Cortex Search</b><code>FPA_ASSUMPTIONS_SEARCH</code> over the planning documents</div>
+      <div class="layer hi"><b>Cortex Agent: <code>FPA_AGENT</code></b>Analyst + Search + <code>run_scenario</code> + <code>submit_review_package</code> + charts, plus the <code>fpa-variance-review</code> agent skill</div>
+      <div class="layer"><b>Human approval</b><code>APPROVE_REVIEW_PACKAGE</code> is <i>not</i> an agent tool; only a person can release notifications</div>
+      <div class="layer"><b>Cost and governance</b>Dedicated warehouse <code>FPA_AGENT_WH</code>, a resource monitor, tagged cost views, and a role that sees only demo objects</div>
+    </div>
+    <div class="arr">&#8594;</div>
+    <div class="col">
+      <div class="hd">Consumers</div>
+      <div class="box"><b>Finance users</b><small>Agent in Snowsight or Snowflake CoWork</small></div>
+      <div class="box"><b>Approvers</b><small>Review package and held notifications</small></div>
+      <div class="box"><b>Cost estimator</b><small>Streamlit dashboard projecting daily, weekly, monthly, and yearly cost</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Show: run sheet -->
+<section class="slide" id="show-runsheet">
+  <div class="tag"><span class="phase ph-show">Show</span>Demo run sheet</div>
+  <h1>Five questions, five capabilities</h1>
+  <div class="sub">Ask these in order in the FP&amp;A Assistant. Each one uses a different tool, and the expected answers are what the agent returned when tested.</div>
+  <div class="tw">
+  <table>
+    <thead><tr><th>#</th><th>Ask the agent</th><th>Tool it uses</th><th>What a good answer shows</th></tr></thead>
+    <tbody>
+      <tr><td class="k">1</td><td><i>"Why is gross margin below plan in EMEA this quarter?"</i></td><td>Skill + Analyst + Search</td><td>53.1% vs 57.4% (-4.3 pts). Drivers: Advisory Services unit cost (+$208/unit, ~$165K) and Core Platform price (-6%, ~$150K)</td></tr>
+      <tr><td class="k">2</td><td><i>"What changed in the forecast since last cycle, and why?"</i></td><td>Analyst</td><td>FY26_SEP vs FY26_AUG by line, with the forecast note for each. Net Q4 operating income about -$247K</td></tr>
+      <tr><td class="k">3</td><td><i>"What happens to operating income if volume declines 8%, hiring is delayed one quarter, and pricing rises 2%?"</i></td><td><code>run_scenario</code></td><td>$3.378M vs $3.449M baseline (-$71K). The hiring delay offsets most of the volume impact</td></tr>
+      <tr><td class="k">4</td><td><i>"What assumptions were documented for the headcount plan?"</i></td><td>Search</td><td>412 FTE; 14 Q4 hires (6 EMEA, 5 NA, 3 APAC); gated on the Q3 close; VP Finance approves</td></tr>
+      <tr><td class="k">5</td><td><i>"Prepare the forecast review package and notify the budget owners."</i></td><td><code>submit_review_package</code></td><td>A package ID in PENDING_APPROVAL and 3 held notifications. Nothing is sent until a person approves</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="say"><b>Before you start:</b> run <code>CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();</code> and open a <b>new</b> agent chat for Q5.</div>
+</section>
+
+<!-- 5. Show: variance -->
+<section class="slide" id="show-variance">
+  <div class="tag"><span class="phase ph-show">Show</span>Q1: variance explained</div>
+  <h1>EMEA gross margin is 4.3 points below plan, and the agent explains why</h1>
+  <div class="sub">The agent loads the <code>fpa-variance-review</code> skill, queries the semantic view by product, splits the gap into price, volume, and unit cost, and cites the EMEA Q3 business review for the reason.</div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">EMEA Q3 GM actual</div><div class="v">53.1%</div><div class="d">Plan 57.4%</div></div>
+    <div class="kpi"><div class="l">Gap</div><div class="v neg">-4.3 pts</div><div class="d">North America and APAC on plan</div></div>
+    <div class="kpi"><div class="l">Advisory Services GM</div><div class="v">21.6%</div><div class="d">Plan 30.0% (-8.4 pts)</div></div>
+    <div class="kpi"><div class="l">Core Platform GM</div><div class="v">68.1%</div><div class="d">Plan 70.0% (-1.9 pts)</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Q3 gross margin by region: actual vs plan</h3>
+      <div class="bars">
+        <div class="bar"><span>EMEA actual</span><div class="t"><div class="f" style="width:53.1%"></div></div><b>53.1%</b></div>
+        <div class="bar"><span>EMEA plan</span><div class="t"><div class="f p" style="width:57.4%"></div></div><b>57.4%</b></div>
+        <div class="bar"><span>North America actual</span><div class="t"><div class="f" style="width:57.3%"></div></div><b>57.3%</b></div>
+        <div class="bar"><span>APAC actual</span><div class="t"><div class="f" style="width:57.8%"></div></div><b>57.8%</b></div>
+      </div>
+      <div class="note">Bars are drawn to scale against 100%. Source: <code>FACT_PL</code>, Jul to Sep 2026.</div>
+    </div>
+    <div class="card">
+      <h3>Top two drivers (from the agent's answer)</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Driver</th><th class="num">Impact</th><th>Reason cited</th></tr></thead>
+        <tbody>
+          <tr><td>Advisory Services unit cost $1,958 vs $1,750</td><td class="num neg">~ -$165K</td><td>Contractor rates up ~12% (EMEA Q3 review)</td></tr>
+          <tr><td>Core Platform price $1,124 vs $1,200</td><td class="num neg">~ -$150K</td><td>Deeper discounts in two large accounts</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">The answer is labelled DRAFT, pending FP&amp;A approval, and names the tool behind each number.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Show: forecast + scenario -->
+<section class="slide" id="show-forecast-scenario">
+  <div class="tag"><span class="phase ph-show">Show</span>Q2 and Q3: forecast change and scenario</div>
+  <h1>What changed, and what if</h1>
+  <div class="sub">Q2 compares the same entity, product, and month across forecast versions and shows the note that explains each change. Q3 is a what-if, so the agent calls the approved <code>RUN_SCENARIO</code> procedure instead of calculating it.</div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Q2: FY26_SEP vs FY26_AUG, Q4 operating income</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Line</th><th class="num">Change</th><th>Forecast note</th></tr></thead>
+        <tbody>
+          <tr><td>EMEA Advisory Services</td><td class="num neg">-$199K</td><td>Cost +12% for contractor rates; opex +3%</td></tr>
+          <tr><td>EMEA Core Platform</td><td class="num neg">-$179K</td><td>Revenue -6%; Q3 discounting continues</td></tr>
+          <tr><td>EMEA Data Products</td><td class="num neg">-$13K</td><td>Opex +3% for backfill</td></tr>
+          <tr><td>North America Data Products</td><td class="num pos">+$94K</td><td>Revenue +5% from new customer wins</td></tr>
+          <tr><td>APAC Core Platform</td><td class="num pos">+$50K</td><td>Revenue +3%; pipeline converting</td></tr>
+          <tr><td><b>Net</b></td><td class="num neg">-$247K</td><td></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h3>Q3: volume -8%, price +2%, hiring delayed 1 quarter</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Oct to Dec, FY26_SEP</th><th class="num">Baseline</th><th class="num">Scenario</th></tr></thead>
+        <tbody>
+          <tr><td>Revenue</td><td class="num">$19.07M</td><td class="num">$17.90M</td></tr>
+          <tr><td>Gross margin</td><td class="num">56.4%</td><td class="num">57.3%</td></tr>
+          <tr><td>Opex</td><td class="num">$7.32M</td><td class="num">$6.88M</td></tr>
+          <tr><td><b>Operating income</b></td><td class="num">$3.449M</td><td class="num"><b>$3.378M</b></td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">Plan operating income for the same months: $3.696M. The scenario is only $71K (-2.1%) below baseline because the hiring delay saves about $439K of opex.</div>
+      <div class="say"><b>Point out:</b> the agent didn't do the math. It passed four inputs to a procedure finance approved, and it returns that procedure's assumptions with the result.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. Show: documents + workflow -->
+<section class="slide" id="show-workflow">
+  <div class="tag"><span class="phase ph-show">Show</span>Q4 and Q5: documents and a human-approved action</div>
+  <h1>The agent prepares; a person approves</h1>
+  <div class="sub">Q4 answers from the planning documents through Cortex Search. Q5 lets the agent take an action, but only up to a held state. Releasing notifications is a separate step the agent can't call.</div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Q4: headcount plan assumptions</h3>
+      <ul>
+        <li>412 FTE at year end</li>
+        <li>14 net new hires in Q4: 6 EMEA, 5 North America, 3 APAC</li>
+        <li>Q4 hiring cost about 6% of forecast opex</li>
+        <li>Gated on the Q3 close; can slip one quarter</li>
+        <li>Any change approved by the VP Finance</li>
+      </ul>
+      <div class="note">Source: "FY26 Headcount Plan", the top search result.</div>
+    </div>
+    <div class="card dark">
+      <h3>Q5: review package workflow</h3>
+      <div class="wf">
+        <div class="wfs"><i>1</i><div>The agent calls <code>submit_review_package</code></div></div>
+        <div class="wfs"><i>2</i><div>Package <code>RP-…</code> is created as <b>PENDING_APPROVAL</b></div></div>
+        <div class="wfs"><i>3</i><div>3 notifications are queued as <b>HELD_UNTIL_APPROVED</b>: Jordan Lee, Priya Raman, Kenji Mori</div></div>
+        <div class="wfs"><i class="h">4</i><div>FP&amp;A reviews and runs <code>APPROVE_REVIEW_PACKAGE</code></div></div>
+        <div class="wfs"><i>5</i><div>Notifications become <b>READY_TO_SEND</b></div></div>
+      </div>
+      <div class="legend"><i></i>Human approval point. The agent has no tool for this step.</div>
+    </div>
+    <div class="card">
+      <h3>Show it in a worksheet</h3>
+<pre>SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
+-- 1 PENDING_APPROVAL, 3 HELD_UNTIL_APPROVED
+
+CALL FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE('RP-...');
+-- {"status":"APPROVED","notifications_released":3}
+
+SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
+-- APPROVED, 3 READY_TO_SEND</pre>
+      <div class="note">Reset between runs with <code>RESET_DEMO_WORKFLOW()</code>. The approvers live in <code>DIM_ENTITY</code> and are never deleted.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. Show: cost -->
+<section class="slide" id="show-cost">
+  <div class="tag"><span class="phase ph-show">Show</span>What it costs</div>
+  <h1>Cost per question is measured, not estimated</h1>
+  <div class="sub">Every agent request is metered. Snowflake tags each query an agent tool runs with the request ID, so the warehouse cost behind each question is exact. The Cost Estimator dashboard projects cost from these measured rates.</div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">Token credits, first ask</div><div class="v">0.196</div><div class="d">about $0.59 at $3/credit</div></div>
+    <div class="kpi"><div class="l">Token credits, repeat</div><div class="v">0.114</div><div class="d">42% cheaper (prompt cache)</div></div>
+    <div class="kpi"><div class="l">Warehouse per question</div><div class="v">~0.003</div><div class="d">exact, from tagged tool queries</div></div>
+    <div class="kpi"><div class="l">Split</div><div class="v">98% / 2%</div><div class="d">AI tokens / warehouse</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Example: 25 users, 30% repeated questions, $3.00/credit</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Questions / user / day</th><th class="num">Daily</th><th class="num">Monthly</th><th class="num">Yearly</th></tr></thead>
+        <tbody>
+          <tr><td>10</td><td class="num">$131</td><td class="num">$2,746</td><td class="num">$32,946</td></tr>
+          <tr><td>25</td><td class="num">$327</td><td class="num">$6,864</td><td class="num">$82,366</td></tr>
+          <tr><td>50</td><td class="num">$654</td><td class="num">$13,728</td><td class="num">$164,732</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">21 working days per month. Based on a small sample of this demo's questions; re-measure with your own questions before quoting.</div>
+    </div>
+    <div class="card">
+      <h3>How to measure it yourself</h3>
+<pre>CALL FPA_DEMO.FPA.START_COST_RUN('pilot_wk1','DEMO_SESSION');
+-- ask the agent your questions ...
+CALL FPA_DEMO.FPA.END_COST_RUN('&lt;run_id&gt;');
+
+-- a few hours later (usage views lag)
+SELECT run_label, questions, token_credits,
+       tagged_wh_credits, token_pct, wh_pct
+FROM FPA_DEMO.FPA.V_RUN_COSTS;</pre>
+      <div class="note">The resource monitor caps warehouse credits only. Use a Snowflake budget to cap AI spend.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 9. Tell: recap -->
+<section class="slide" id="tell-recap">
+  <div class="tag"><span class="phase ph-tell">Tell</span>What you saw</div>
+  <h1>Answers finance can trust, with finance still in control</h1>
+  <div class="sub">The same governed layer answered five different kinds of question, and the agent showed where every answer came from.</div>
+  <div class="grid g4">
+    <div class="card"><h3>Governed numbers</h3><p>Every metric comes from one semantic view. The agent's SQL can be inspected, and dashboards reuse the same definitions.</p></div>
+    <div class="card"><h3>Approved logic</h3><p>Scenarios run in a procedure finance owns. The model chooses the inputs; it never invents the formula.</p></div>
+    <div class="card"><h3>Grounded reasons</h3><p>"Why" answers cite the forecast note or the planning document. The skill tells the agent to say so when no source supports a reason.</p></div>
+    <div class="card dark"><h3>Human in the loop</h3><p>The agent can prepare a package but can't release it. Approval is a separate, audited step.</p></div>
+  </div>
+  <div class="quote">From "find the number" to "decide what to do about it", in one conversation.</div>
+</section>
+
+<!-- 10. Tell: extend -->
+<section class="slide" id="tell-extend">
+  <div class="tag"><span class="phase ph-tell">Tell</span>Extending it for FP&amp;A teams</div>
+  <h1>Where an FP&amp;A team can take this next</h1>
+  <div class="sub">Each idea builds on what's already in the demo: the semantic view, the agent, custom tools, skills, and approvals. None of these are built in the demo today.</div>
+  <div class="grid g3">
+    <div class="idea"><div class="c">Data</div><div class="h">Connect real planning data</div><div class="b">Point the semantic view at your general ledger, planning-tool exports, and HR data instead of synthetic tables. Add chart of accounts and cost-center hierarchies.</div><div class="s"><b>Builds on:</b> semantic view, curated views</div></div>
+    <div class="idea"><div class="c">Self-service</div><div class="h">Budget-owner view</div><div class="b">"How is my cost center tracking?" Row access policies restrict each owner to their own entities and cost centers, so the same agent serves everyone.</div><div class="s"><b>Builds on:</b> row access and masking policies</div></div>
+    <div class="idea"><div class="c">Forecasting</div><div class="h">ML baseline and anomaly watch</div><div class="b">Add a statistical baseline forecast and flag lines that drift beyond tolerance. The agent summarizes the anomalies each morning.</div><div class="s"><b>Builds on:</b> Snowflake ML functions, tasks</div></div>
+    <div class="idea"><div class="c">Reporting</div><div class="h">Monthly close commentary</div><div class="b">Extend the variance skill into a full close pack: headline, top drivers, outlook, actions, in your commentary standard, then routed for approval.</div><div class="s"><b>Builds on:</b> agent skills, review workflow</div></div>
+    <div class="idea"><div class="c">Scenarios</div><div class="h">Driver-based planning library</div><div class="b">Add approved procedures for FX, pricing, headcount, and mix. Store each run with its inputs so scenarios can be compared side by side.</div><div class="s"><b>Builds on:</b> custom tools, scenario tables</div></div>
+    <div class="idea"><div class="c">Workflow</div><div class="h">Deliver, don't just queue</div><div class="b">After approval, send notifications by email or team chat, or write the approved forecast back for the planning tool and BI dashboards.</div><div class="s"><b>Builds on:</b> notification integrations, MCP connectors, tasks</div></div>
+    <div class="idea"><div class="c">Quality</div><div class="h">Finance test set</div><div class="b">Maintain 20 to 50 finance questions with expected answers and rerun them before every change to the semantic view or agent.</div><div class="s"><b>Builds on:</b> Cortex Agent evaluations</div></div>
+    <div class="idea"><div class="c">Reach</div><div class="h">Where finance already works</div><div class="b">Offer the agent in Snowflake CoWork, embed it in a Streamlit app beside the dashboards, or expose it in the team chat tools finance already uses.</div><div class="s"><b>Builds on:</b> agent API, Streamlit</div></div>
+    <div class="idea"><div class="c">Cost and control</div><div class="h">Budgets and chargeback</div><div class="b">Tagged cost runs per team or pilot, a Snowflake budget on AI spend, and a weekly cost digest for the finance systems owner.</div><div class="s"><b>Builds on:</b> tagged cost views, budgets, automations</div></div>
+  </div>
+</section>
+
+<!-- 11. Next steps -->
+<section class="slide" id="next-steps">
+  <div class="tag">From demo to pilot</div>
+  <h1>A focused pilot on your own data</h1>
+  <div class="sub">Start small, with one business area and one question type, and widen as accuracy and adoption are proven.</div>
+  <div class="ttt">
+    <div class="st"><div class="n">Weeks 1 to 2</div><h3>Prepare</h3><ul><li>Sandbox schema and a role that sees only the pilot objects</li><li>Read access to a masked or sampled copy of the FP&amp;A tables</li><li>Agree metric definitions with finance</li><li>Resource monitor and AI budget in place</li></ul></div>
+    <div class="arr">&#8594;</div>
+    <div class="st show"><div class="n">Weeks 3 to 4</div><h3>Build</h3><ul><li>Semantic view over the real tables</li><li>Agent with Analyst, Search, and one approved scenario</li><li>Finance test set of about 20 questions</li><li>Tagged cost runs from day one</li></ul></div>
+    <div class="arr">&#8594;</div>
+    <div class="st"><div class="n">Weeks 5 to 6</div><h3>Prove</h3><ul><li>Finance users ask real questions</li><li>Measure accuracy, time saved, and cost per question</li><li>Add the review workflow with approval</li><li>Decide on promotion to production</li></ul></div>
+  </div>
+  <div class="quote">Ask for today: one business area, one owner, and the sandbox access to start.</div>
+</section>
+
+<!-- A. Build order -->
+<section class="slide" id="appendix-build">
+  <div class="tag">Appendix A: build and run order</div>
+  <h1>Rebuild the demo from the repo</h1>
+  <div class="sub">All scripts are in <code>FPA-AGENT-DEMO/</code>. Run them in order; each one includes its own validation. Expected build cost is a few credits.</div>
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Script</th><th>Creates</th></tr></thead>
+    <tbody>
+      <tr><td class="k">01</td><td><code>01_setup_role_user_env.sql</code></td><td>Demo role and user, database, warehouse, resource monitor, grants (ACCOUNTADMIN)</td></tr>
+      <tr><td class="k">02</td><td><code>02_synthetic_data.sql</code></td><td>Dimensions, actuals and plan, two forecast versions, planning documents, workflow tables</td></tr>
+      <tr><td class="k">03-04</td><td><code>03_cortex_search.sql</code>, <code>04_semantic_view.sql</code></td><td>Search service and semantic view</td></tr>
+      <tr><td class="k">05</td><td><code>05_procedures.sql</code></td><td>Scenario, submit, approve, and reset procedures; package status view</td></tr>
+      <tr><td class="k">06-07</td><td><code>06_agent_skill_upload.sql</code>, <code>07_agent.sql</code></td><td>Agent skill on a stage; <code>FPA_AGENT</code></td></tr>
+      <tr><td class="k">08</td><td><code>08_test_agent_questions.sql</code></td><td>Runs the five questions and resets the workflow</td></tr>
+      <tr><td class="k">09-13</td><td>Cost scripts</td><td>Cost monitoring, cost views, load test, estimator app, dedicated agent warehouse, tagged runs</td></tr>
+      <tr><td class="k">99</td><td><code>99_cleanup.sql</code></td><td>Drops everything. Run only when finished</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- B. Presenter checklist -->
+<section class="slide" id="appendix-presenter">
+  <div class="tag">Appendix B: presenter checklist</div>
+  <h1>Before, during, and after the demo</h1>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Before (5 minutes)</h3>
+      <ul>
+        <li>Log in as <code>FPA_DEMO_USER</code> (role <code>FPA_DEMO_ROLE</code>)</li>
+        <li><code>CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();</code></li>
+        <li>Open the FP&amp;A Assistant and a worksheet side by side</li>
+        <li>Optional: <code>START_COST_RUN('demo_name','DEMO_SESSION')</code></li>
+        <li>Ask Q1 once beforehand to warm the warehouse</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>During (15 to 20 minutes)</h3>
+      <ul>
+        <li>Tell: slides 2 and 3 (3 minutes)</li>
+        <li>Show: Q1 to Q4 in one chat; open the SQL behind Q1</li>
+        <li>Show: Q5 in a <b>new</b> chat, then the status view, approve, and the status view again</li>
+        <li>Show: the Cost Estimator; change users and $/credit live</li>
+        <li>Tell: slides 9 to 11 (5 minutes)</li>
+      </ul>
+    </div>
+    <div class="card dark">
+      <h3>After and troubleshooting</h3>
+      <ul>
+        <li><code>END_COST_RUN('&lt;run_id&gt;')</code>; check <code>V_RUN_COSTS</code> a few hours later</li>
+        <li>Reset the workflow for the next presenter</li>
+        <li><b>No package created?</b> Use a new chat</li>
+        <li><b>Approval says NOT_FOUND?</b> Use the exact ID, and don't reset between submit and approve</li>
+        <li><b>Dashboard can't read views?</b> The role needs <code>USAGE_VIEWER</code> and <code>GOVERNANCE_VIEWER</code></li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">All data is synthetic. Acme Corp and all people named are fictional.</div>
+</section>
+
+</div>
+
+<div class="nav"><button id="prev" type="button">&#9664; Prev</button><span id="ct">1 / 13</span><button id="next" type="button">Next &#9654;</button></div>
+<script>
+(function(){
+  var s=Array.prototype.slice.call(document.querySelectorAll('.slide')),i=0;
+  function show(){s.forEach(function(e,n){e.classList.toggle('active',n===i)});document.getElementById('ct').textContent=(i+1)+' / '+s.length}
+  function go(d){i=Math.max(0,Math.min(s.length-1,i+d));show()}
+  document.getElementById('prev').addEventListener('click',function(){go(-1)});
+  document.getElementById('next').addEventListener('click',function(){go(1)});
+  document.addEventListener('keydown',function(e){
+    if(['ArrowRight','PageDown',' '].indexOf(e.key)>-1)go(1);
+    if(['ArrowLeft','PageUp'].indexOf(e.key)>-1)go(-1);
+  });
+  show();
+})();
+</script>
+</body>
+</html>

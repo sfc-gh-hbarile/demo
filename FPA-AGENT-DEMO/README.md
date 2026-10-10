@@ -15,11 +15,24 @@ The agent includes:
 | Orchestration and response instructions | in the agent spec | Tool routing, period and version rules, DRAFT labelling |
 | Human-only step (not given to the agent) | `FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE` | Releases held notifications |
 
+## Presentation
+
+**[FPA_Agent_Demo_Presentation.html](FPA_Agent_Demo_Presentation.html)** is a 13-slide presenter aid structured as **Tell, Show, Tell**. Download it and open it in a browser; use the arrow keys or the on-screen buttons to move between slides.
+
+| Phase | Slides | Content |
+|---|---|---|
+| Tell | 1 to 3 | The FP&A problem, the planted EMEA story, and the architecture that was built |
+| Show | 4 to 8 | Run sheet for the five questions with expected answers, then one slide per capability: variance, forecast change and scenario, documents and the approval workflow, and cost |
+| Tell | 9 to 11 | What the audience saw, nine ways to extend it for FP&A teams, and a six-week path from demo to pilot |
+| Appendix | 12 to 13 | Build and run order; presenter checklist with reset steps, timing, and troubleshooting |
+
+Every number in the deck comes from this demo's validations and tagged cost runs. Update the deck if you change the data or re-measure costs.
+
 ## Clean demo login
 
 Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**, whose only role is `FPA_DEMO_ROLE`, and you see only the demo objects instead of everything ACCOUNTADMIN sees.
 
-- Default role `FPA_DEMO_ROLE`, default warehouse `FPA_DEMO_WH`, default namespace `FPA_DEMO.FPA`, secondary roles off. Cortex Agents use the user's **default** role and warehouse.
+- Default role `FPA_DEMO_ROLE`, default warehouse `FPA_AGENT_WH` (set in script 13; script 01 starts it on `FPA_DEMO_WH`), default namespace `FPA_DEMO.FPA`, secondary roles off. Cortex Agents use the user's **default** role and warehouse.
 - Grants: ownership of `FPA_DEMO`, `FPA_DEMO_WH` and `FPA_AGENT_WH`; `SNOWFLAKE.CORTEX_USER`; `SNOWFLAKE.USAGE_VIEWER` (metering, agent and search usage, query attribution); `SNOWFLAKE.GOVERNANCE_VIEWER` (`QUERY_HISTORY`, needed to find the agent's tagged tool queries); and MONITOR on `FPA_DEMO_RM`.
 - Streamlit apps run with **only** the owner role (no secondary roles), so every view the dashboard reads must be readable by `FPA_DEMO_ROLE` alone. Test with `USE SECONDARY ROLES NONE;`.
 - `FPA_DEMO_ROLE` is also granted to SYSADMIN and to the admin who runs the build.
