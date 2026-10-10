@@ -3,6 +3,7 @@
 --   RUN_SCENARIO            -> agent tool run_scenario
 --   SUBMIT_REVIEW_PACKAGE   -> agent tool submit_review_package (creates PENDING_APPROVAL only)
 --   APPROVE_REVIEW_PACKAGE  -> human-only step, NOT exposed to the agent
+--   RESET_DEMO_WORKFLOW     -> clears the package/outbox tables between demo runs
 -- =====================================================================
 USE ROLE FPA_DEMO_ROLE; USE WAREHOUSE FPA_DEMO_WH;
 
@@ -78,16 +79,53 @@ $$;
 CREATE OR REPLACE PROCEDURE FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE(PACKAGE_ID VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
-COMMENT = 'Human approval step. NOT exposed to the agent. Releases held notifications.'
+COMMENT = 'Human approval step. NOT exposed to the agent. Releases held notifications. Fails clearly if the package is missing or not pending.'
 AS
 $$
+DECLARE
+  pid VARCHAR DEFAULT TRIM(REPLACE(REPLACE(:PACKAGE_ID, '<', ''), '>', ''));   -- tolerate pasted <RP-...>
+  n_pkg NUMBER;
+  n_notes NUMBER;
 BEGIN
+  SELECT COUNT(*) INTO :n_pkg FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG WHERE package_id = :pid AND status = 'PENDING_APPROVAL';
+  IF (n_pkg = 0) THEN
+    RETURN OBJECT_CONSTRUCT('package_id', pid, 'status', 'NOT_FOUND_OR_NOT_PENDING',
+      'pending_packages', (SELECT ARRAY_AGG(package_id) FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG WHERE status = 'PENDING_APPROVAL'),
+      'hint', 'Ask the agent (in a NEW chat) to prepare the review package, then approve the package_id it returns.');
+  END IF;
   UPDATE FPA_DEMO.FPA.REVIEW_PACKAGE_LOG SET status = 'APPROVED', approved_by = CURRENT_USER(), approved_at = CURRENT_TIMESTAMP()
-    WHERE package_id = :PACKAGE_ID;
-  UPDATE FPA_DEMO.FPA.NOTIFICATION_OUTBOX SET status = 'READY_TO_SEND' WHERE package_id = :PACKAGE_ID;
-  RETURN OBJECT_CONSTRUCT('package_id', :PACKAGE_ID, 'status', 'APPROVED');
+    WHERE package_id = :pid AND status = 'PENDING_APPROVAL';
+  UPDATE FPA_DEMO.FPA.NOTIFICATION_OUTBOX SET status = 'READY_TO_SEND' WHERE package_id = :pid AND status = 'HELD_UNTIL_APPROVED';
+  n_notes := SQLROWCOUNT;
+  RETURN OBJECT_CONSTRUCT('package_id', pid, 'status', 'APPROVED', 'notifications_released', n_notes);
 END;
 $$;
+
+-- Reset the review-package demo. Finance owners (the 3 approvers) live in DIM_ENTITY and are
+-- never deleted; SUBMIT_REVIEW_PACKAGE re-queues one notification per owner on every submit.
+CREATE OR REPLACE PROCEDURE FPA_DEMO.FPA.RESET_DEMO_WORKFLOW()
+RETURNS VARIANT
+LANGUAGE SQL
+COMMENT = 'Clears REVIEW_PACKAGE_LOG and NOTIFICATION_OUTBOX so the review-package demo starts clean. Finance owners in DIM_ENTITY are untouched.'
+AS
+$$
+DECLARE
+  n_owners NUMBER;
+BEGIN
+  DELETE FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;
+  DELETE FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG;
+  SELECT COUNT(*) INTO :n_owners FROM FPA_DEMO.FPA.DIM_ENTITY WHERE finance_owner_email IS NOT NULL;
+  RETURN OBJECT_CONSTRUCT('status', 'RESET', 'finance_owners_available', n_owners,
+    'next_step', 'In a NEW agent chat ask: Prepare the forecast review package and notify the budget owners.');
+END;
+$$;
+
+-- One view to show during the demo: package + its 3 notifications
+CREATE OR REPLACE VIEW FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS AS
+SELECT p.package_id, p.status AS package_status, p.period, p.created_by, p.created_at, p.approved_by, p.approved_at,
+       o.region, o.recipient_name, o.recipient_email, o.status AS notification_status
+FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG p
+LEFT JOIN FPA_DEMO.FPA.NOTIFICATION_OUTBOX o ON o.package_id = p.package_id;
 
 -- Validation 1: expect baseline OI ~3,449,333 vs plan ~3,696,454; scenario ~3,378,021 (-71K)
 CALL FPA_DEMO.FPA.RUN_SCENARIO(-8, 2, 1, 'ALL');
@@ -98,5 +136,4 @@ SET pkg = (SELECT MAX(package_id) FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG);
 CALL FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE($pkg);
 SELECT (SELECT status FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG WHERE package_id = $pkg) AS pkg_status,      -- APPROVED
        (SELECT COUNT(*) FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX WHERE package_id = $pkg AND status = 'READY_TO_SEND') AS ready_notes; -- 3
-DELETE FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG;
-DELETE FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;
+CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();

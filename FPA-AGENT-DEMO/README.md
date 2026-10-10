@@ -35,7 +35,7 @@ Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**
 | 02 | `02_synthetic_data.sql` | FPA_DEMO_ROLE | Dimensions, `FACT_PL` (Jan-Sep actuals and plan), `FACT_FORECAST` (Oct-Dec, FY26_AUG and FY26_SEP), 6 planning docs, workflow tables | EMEA Q3 GM **53.1% vs 57.4%** plan |
 | 03 | `03_cortex_search.sql` | FPA_DEMO_ROLE | Cortex Search service over the docs | "headcount plan hiring" returns **FY26 Headcount Plan** |
 | 04 | `04_semantic_view.sql` | FPA_DEMO_ROLE | Semantic view with metrics and AI instructions | EMEA Q3 gap: Advisory Services **-8.4 pts**, Core Platform **-1.9 pts** |
-| 05 | `05_procedures.sql` | FPA_DEMO_ROLE | Scenario, submit, and approve procedures, with a self-cleaning test | Baseline OI $3.449M vs $3.696M plan; scenario $3.378M |
+| 05 | `05_procedures.sql` | FPA_DEMO_ROLE | Scenario, submit, approve, and reset procedures, `V_REVIEW_PACKAGE_STATUS`, with a self-cleaning test | Baseline OI $3.449M vs $3.696M plan; scenario $3.378M |
 | 06 | `06_agent_skill_upload.sql` | FPA_DEMO_ROLE | Creates the stage and uploads `agent_skills/fpa-variance-review/SKILL.md` (needs a client that supports PUT) | `LS` shows SKILL.md |
 | 07 | `07_agent.sql` | FPA_DEMO_ROLE | Creates `FPA_DEMO.FPA.FPA_AGENT` | `DESCRIBE AGENT` shows 5 tools and 1 skill |
 | 08 | `08_test_agent_questions.sql` | FPA_DEMO_ROLE | Runs the 5 demo questions through `DATA_AGENT_RUN`, then resets the workflow tables | See expected results below |
@@ -66,16 +66,35 @@ Ask these in Snowsight (**AI & ML » Agents » FP&A Assistant**) or in CoWork, l
 | 4 | What assumptions were documented for the headcount plan? | fpa_search | 412 FTE; 14 Q4 hires (6 EMEA, 5 NA, 3 APAC); about 6% of opex; gated on Q3 close; VP Finance approves |
 | 5 | Prepare the forecast review package and notify the budget owners. | submit_review_package | Package `RP-…` in PENDING_APPROVAL with 3 held notifications; nothing is sent until approved |
 
-**Approval step (human, after Q5):**
+### Review-package workflow (Q5): run it, approve it, reset it
+
+The 3 approvers (Jordan Lee, Priya Raman, Kenji Mori) are stored in `DIM_ENTITY` and are **never deleted**. Each time the agent submits a package, `SUBMIT_REVIEW_PACKAGE` queues one held notification per owner.
+
 ```sql
-SELECT * FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG;            -- PENDING_APPROVAL
-CALL FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE('<package_id>');  -- the human approves
-SELECT * FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;           -- READY_TO_SEND
+-- 0. Before the demo: start clean (owners are untouched)
+CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();
+
+-- 1. In a NEW agent chat ask: "Prepare the forecast review package and notify the budget owners."
+--    The agent returns a package_id such as RP-20261009212033.
+
+-- 2. Show it is held: 1 package PENDING_APPROVAL, 3 notifications HELD_UNTIL_APPROVED
+SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
+
+-- 3. The human approves. Use the id exactly, without < >; the procedure also strips them if pasted.
+CALL FPA_DEMO.FPA.APPROVE_REVIEW_PACKAGE('RP-20261009212033');
+--    returns {"status":"APPROVED","notifications_released":3}
+
+-- 4. Show the result: package APPROVED, 3 notifications READY_TO_SEND
+SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
+
+-- 5. After the demo: reset for next time
+CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();
 ```
-**Reset before the next run:**
-```sql
-DELETE FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG; DELETE FROM FPA_DEMO.FPA.NOTIFICATION_OUTBOX;
-```
+
+**Troubleshooting:**
+- **Asking again doesn't create a package:** start a **new chat**. In the same thread the agent sees it already prepared one and may not call the tool again. Check with `SELECT * FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG;`.
+- **Approval returns `NOT_FOUND_OR_NOT_PENDING`:** the id doesn't exist (for example, the tables were reset after it was created) or it's already approved. The response lists any `pending_packages`. Earlier versions said `APPROVED` even when 0 rows changed; that's fixed.
+- **Use `RESET_DEMO_WORKFLOW()` instead of manual `DELETE`s**, and only between demo runs, never between submit and approve.
 
 ## Monitoring agent costs
 
