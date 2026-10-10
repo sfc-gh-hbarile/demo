@@ -6,7 +6,15 @@
 -- Prereqs: scripts 10 and 11. PUBLIC has USAGE on SYSTEM_COMPUTE_POOL_CPU in this
 -- account; if not in yours: GRANT USAGE ON COMPUTE POOL <pool> TO ROLE FPA_DEMO_ROLE;
 -- Find the default pool: SHOW PARAMETERS LIKE 'DEFAULT_STREAMLIT_COMPUTE_POOL' IN ACCOUNT;
+-- The container runtime requires pyproject.toml, and a dependency file needs PyPI
+-- access through an external access integration (one-time, ACCOUNTADMIN).
 -- =====================================================================
+USE ROLE ACCOUNTADMIN;
+CREATE EXTERNAL ACCESS INTEGRATION IF NOT EXISTS PYPI_ACCESS_INTEGRATION
+  ALLOWED_NETWORK_RULES = (SNOWFLAKE.EXTERNAL_ACCESS.PYPI_RULE) ENABLED = TRUE
+  COMMENT = 'PyPI access for Streamlit container runtime (FPA demo cost estimator)';
+GRANT USAGE ON INTEGRATION PYPI_ACCESS_INTEGRATION TO ROLE FPA_DEMO_ROLE;
+
 USE ROLE FPA_DEMO_ROLE; USE WAREHOUSE FPA_DEMO_WH;
 
 CREATE STAGE IF NOT EXISTS FPA_DEMO.FPA.APP_STAGE
@@ -15,6 +23,8 @@ CREATE STAGE IF NOT EXISTS FPA_DEMO.FPA.APP_STAGE
 -- Adjust the local path if you run from a different directory
 PUT 'file:///Users/hbarile/Dev/dev/profiles/hbtraining/FP&A/cost_estimator_app/streamlit_app.py'
   @FPA_DEMO.FPA.APP_STAGE/cost_estimator/ AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
+PUT 'file:///Users/hbarile/Dev/dev/profiles/hbtraining/FP&A/cost_estimator_app/pyproject.toml'
+  @FPA_DEMO.FPA.APP_STAGE/cost_estimator/ AUTO_COMPRESS = FALSE OVERWRITE = TRUE;
 
 CREATE OR REPLACE STREAMLIT FPA_DEMO.FPA.FPA_AGENT_COST_ESTIMATOR
   FROM '@FPA_DEMO.FPA.APP_STAGE/cost_estimator'
@@ -22,6 +32,7 @@ CREATE OR REPLACE STREAMLIT FPA_DEMO.FPA.FPA_AGENT_COST_ESTIMATOR
   QUERY_WAREHOUSE = FPA_DEMO_WH
   RUNTIME_NAME = 'SYSTEM$ST_CONTAINER_RUNTIME_PY3_11'
   COMPUTE_POOL = SYSTEM_COMPUTE_POOL_CPU
+  EXTERNAL_ACCESS_INTEGRATIONS = (PYPI_ACCESS_INTEGRATION)
   TITLE = 'FP&A Agent Cost Estimator'
   COMMENT = 'Synthetic Acme Corp demo: projects FPA_AGENT cost from measured usage';
 
