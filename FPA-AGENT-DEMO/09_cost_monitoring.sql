@@ -33,15 +33,24 @@ FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY
 WHERE agent_name = 'FPA_AGENT'
 ORDER BY start_time DESC LIMIT 20;
 
--- 4. Breakdown by service and model (orchestration vs Cortex Analyst)
+-- 4. Breakdown by service and model, split into cache read / cache write / input+output.
+--    CREDITS_GRANULAR is nested: [ { <request_id>: { <service>: { <model>: {...} }, start_time } } ]
+--    (V_AGENT_REQUEST_COSTS in script 10 wraps this same flatten)
 SELECT DATE_TRUNC('day', h.start_time) AS usage_day,
-       g.value:service_type::STRING AS service_type,
-       g.value:model::STRING AS model,
-       ROUND(SUM(COALESCE(g.value:input::FLOAT, 0) + COALESCE(g.value:cache_read_input::FLOAT, 0)
-               + COALESCE(g.value:cache_write_input::FLOAT, 0) + COALESCE(g.value:output::FLOAT, 0)), 6) AS credits
+       f3.key AS service_type,
+       f4.key AS model,
+       ROUND(SUM(f4.value:cache_read_input::FLOAT), 6)  AS cache_read_credits,
+       ROUND(SUM(f4.value:cache_write_input::FLOAT), 6) AS cache_write_credits,
+       ROUND(SUM(f4.value:input::FLOAT + f4.value:output::FLOAT), 6) AS input_output_credits,
+       ROUND(SUM(f4.value:input::FLOAT + f4.value:cache_read_input::FLOAT
+               + f4.value:cache_write_input::FLOAT + f4.value:output::FLOAT), 6) AS credits
 FROM SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY h,
-     LATERAL FLATTEN(input => h.credits_granular) g
+     LATERAL FLATTEN(h.credits_granular) f1,
+     LATERAL FLATTEN(f1.value) f2,
+     LATERAL FLATTEN(f2.value) f3,
+     LATERAL FLATTEN(f3.value) f4
 WHERE h.agent_name = 'FPA_AGENT' AND h.start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND IS_OBJECT(f3.value)
 GROUP BY 1, 2, 3 ORDER BY 1 DESC, credits DESC;
 
 -- 5. Cortex Search service cost (serving and indexing, billed separately from the agent)

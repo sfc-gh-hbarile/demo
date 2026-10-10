@@ -40,6 +40,9 @@ Every demo object is owned by **`FPA_DEMO_ROLE`**. Log in as **`FPA_DEMO_USER`**
 | 07 | `07_agent.sql` | FPA_DEMO_ROLE | Creates `FPA_DEMO.FPA.FPA_AGENT` | `DESCRIBE AGENT` shows 5 tools and 1 skill |
 | 08 | `08_test_agent_questions.sql` | FPA_DEMO_ROLE | Runs the 5 demo questions through `DATA_AGENT_RUN`, then resets the workflow tables | See expected results below |
 | 09 | `09_cost_monitoring.sql` | FPA_DEMO_ROLE | Agent cost summary, per user, per request, by service and model; Cortex Search; warehouse; resource monitor (see **Monitoring agent costs**) | May be empty for a few hours (ACCOUNT_USAGE lag) |
+| 10 | `10_cost_views.sql` | FPA_DEMO_ROLE | Cost model views: `V_AGENT_REQUEST_COSTS`, `V_AGENT_REQUESTS`, `V_LOAD_TEST_COSTS`, `V_COST_CALIBRATION`, plus the `AGENT_LOAD_TEST_LOG` table | Granular credits match `TOKEN_CREDITS` for every request |
+| 11 | `11_load_test.sql` | FPA_DEMO_ROLE | `RUN_AGENT_LOAD_TEST(n, label)`: asks the agent n questions (first asks, then repeats) and logs each call | 8/8 calls succeed; costs appear after the usage lag |
+| 12 | `12_deploy_cost_estimator_app.sql` + `cost_estimator_app/` | FPA_DEMO_ROLE | Deploys the **FP&A Agent Cost Estimator** Streamlit app | `SHOW STREAMLITS` returns one row |
 | 99 | `99_cleanup.sql` | ACCOUNTADMIN | Drops everything. **Run only when finished.** | |
 
 `FPA_Agentic_Finance_Demo_Prompt.md` is the original build prompt.
@@ -114,6 +117,76 @@ Notes:
 - **Access:** `FPA_DEMO_ROLE` reads these views through the `SNOWFLAKE.USAGE_VIEWER` database role, so the demo user doesn't need ACCOUNTADMIN.
 - **Guardrail scope:** `FPA_DEMO_RM` caps only warehouse compute; it suspends `FPA_DEMO_WH` at 10 credits per month. Agent token credits are serverless, so the resource monitor does not cap them. Track them with the queries above, or set a Snowflake budget for AI spend.
 - **Plain language:** in CoCo, ask: *"Using cost-intelligence, show Cortex Agent credits for FPA_AGENT and warehouse credits for FPA_DEMO_WH by day for the last 7 days."*
+
+## Cost estimator (projecting customer cost)
+
+### Three steps
+1. **Measure:** run `CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(8, 'smoke');` (script 11). It asks the 4 read-only demo questions, then asks them again, and logs each call. It costs about 1.5 credits and takes about 8 minutes. For more data, run `(10,'tier_10')`, `(25,'tier_25')` or `(50,'tier_50')`, at roughly 0.15–0.2 credits per call.
+2. **Wait** a few hours for `ACCOUNT_USAGE`. `V_COST_CALIBRATION` then reports average credits for a first ask and for a repeat, and the cache shares.
+3. **Project:** open **Snowsight » Projects » Streamlit » FP&A Agent Cost Estimator** and adjust the inputs.
+
+### Dashboard inputs
+| Input | Default |
+|---|---|
+| Price per credit | **$3.00** (editable) |
+| Number of users | 25 |
+| Questions per user per day | presets **10 / 25 / 50**, or custom |
+| Working days per month | 21 (weekly = 5 days, yearly = 12 months) |
+| Repeated questions % | 30% |
+| Credits per question | measured first-ask and repeat values, or your own override |
+| Warehouse cost | attributed SQL credits per question, **or** warehouse awake hours per day × 1 credit/hour (XS) |
+| Cortex Search credits per day | measured 14-day average |
+
+**Outputs:**
+- daily, weekly, monthly and yearly credits and dollars, split into agent tokens, warehouse and search
+- a comparison of 10, 25 and 50 questions per user
+- a chart of monthly cost by number of users
+- the observed actuals: requests measured, credits per question, cache-hit %, cache-write share, and first ask vs repeat
+
+### Formula
+```
+questions/day   = users × questions per user per day
+agent credits   = questions × (1 - repeat%) × first_ask_credits + questions × repeat% × repeat_credits
+warehouse       = questions × sql_credits_per_question     (or awake_hours × 1 credit/hr for XS)
+total credits   = agent + warehouse + search_per_day;  week = ×5, month = ×working days, year = month × 12
+cost ($)        = total credits × price per credit
+```
+I unit-tested the app's formula against a hand calculation (25 users × 10 questions, 30% repeats, 0.25/0.15 credits, $3), and it matched for every period and for both warehouse methods.
+
+### Measured in this account (synthetic demo, 9 Oct 2026, model `claude-opus-4-8` via `auto`)
+| Segment | Calls | Avg token credits | Cache-write share | Input served from cache |
+|---|---|---|---|---|
+| All requests | 15 | 0.181 | 55% | 83% |
+| Load test: first ask | 5 | **0.196** | 58% | 81% |
+| Load test: repeat | 4 | **0.114** (42% cheaper) | 42% | 89% |
+
+Warehouse SQL attributed to agent calls averaged about 0.003 credits per question. Cortex Search was close to 0 for this small corpus.
+
+**What the caching numbers mean:**
+- Most of the cost is **cache writes**: the agent's instructions, tool definitions and context are written to the model's prompt cache. A recent repeat reuses more of that cache.
+- The saving depends on the question:
+
+| Question | First ask | Repeat | Saving |
+|---|---|---|---|
+| Q2 forecast changes | 0.341 | 0.177 | 48% |
+| Q4 headcount | 0.118 | 0.045 | 62% |
+| Q1 EMEA margin | 0.202 | 0.188 | about 7% |
+| Q3 scenario | 0.053 | 0.047 | about 12% |
+
+- The answer itself is **not** cached; every repeat still runs the tools. The saving comes only from token-level prompt caching, and only while the cache is warm (calls minutes apart). Don't assume a fixed discount.
+- These figures come from a small sample (one call per question per attempt). Run larger tiers before quoting a customer.
+
+### Example: measured rates, 25 users, 30% repeats, $3.00/credit
+| Questions / user / day | Daily | Weekly | Monthly | Yearly |
+|---|---|---|---|---|
+| 10 | 43.6 cr / $131 | 218 cr / $654 | 915 cr / $2,746 | 10,982 cr / $32,946 |
+| 25 | 109 cr / $327 | 545 cr / $1,634 | 2,288 cr / $6,864 | 27,455 cr / $82,366 |
+| 50 | 218 cr / $654 | 1,090 cr / $3,268 | 4,576 cr / $13,728 | 54,911 cr / $164,732 |
+
+**Caveats:**
+- These are estimates based on this demo's question mix, tools and model.
+- Longer multi-turn threads, more tools, different models or a customer's own questions will change the cost per question. Re-measure with their questions.
+- The warehouse "attributed" method understates real warehouse cost, because XS warehouses bill a 60-second minimum on each resume. For steady use, use the "awake hours" method.
 
 ## Notes
 

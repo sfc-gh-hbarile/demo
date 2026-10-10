@@ -1,0 +1,15 @@
+definition_version: 2
+entities:
+  fpa_agent_cost_estimator:
+    type: streamlit
+    identifier:
+      name: FPA_AGENT_COST_ESTIMATOR
+      database: FPA_DEMO
+      schema: FPA
+    title: "FP&A Agent Cost Estimator"
+    query_warehouse: FPA_DEMO_WH
+    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU
+    main_file: streamlit_app.py
+    artifacts:
+      - streamlit_app.py
