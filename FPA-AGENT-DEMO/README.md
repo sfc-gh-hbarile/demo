@@ -1,5 +1,7 @@
 # Acme Corp FP&A Agent Demo
 
+![Agentic FP&A on Snowflake: one governed layer serving the agent and the dashboard](images/fpa_agent_architecture.png)
+
 A self-contained FP&A demo for Snowflake. A Cortex Agent answers variance, forecast, scenario, and policy questions for the fictional company **Acme Corp**, and drafts a review package that waits for human approval. **All data is synthetic.**
 
 The agent includes:
@@ -17,16 +19,7 @@ The agent includes:
 
 ## Presentation
 
-**[FPA_Agent_Demo_Presentation.html](FPA_Agent_Demo_Presentation.html)** is a 14-slide presenter aid structured as **Tell, Show, Tell**. Download it and open it in a browser; use the arrow keys or the on-screen buttons to move between slides.
-
-| Phase | Slides | Content |
-|---|---|---|
-| Tell | 1 to 3 | The FP&A problem, the planted EMEA story, and the architecture that was built |
-| Show | 4 to 8 | Run sheet for the five questions with expected answers, then one slide per capability: variance, forecast change and scenario, documents and the approval workflow, and cost |
-| Tell | 9 to 11 | What the audience saw, nine ways to extend it for FP&A teams, and a six-week path from demo to pilot |
-| Appendix | 12 to 14 | Build and run order; presenter checklist with reset steps, timing, and troubleshooting; built-in cost tools vs the demo views |
-
-Every number in the deck comes from this demo's validations and tagged cost runs. Update the deck if you change the data or re-measure costs.
+**[FPA_Agent_Demo_Presentation.html](FPA_Agent_Demo_Presentation.html)** is a 14-slide companion presentation. It covers the FP&A challenge, the architecture, the five demo questions with their results, what the agent costs and how to control it, ways to extend the solution for FP&A teams, and a path from demo to pilot.
 
 ## Clean demo login
 
