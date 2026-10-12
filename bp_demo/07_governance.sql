@@ -1,0 +1,89 @@
+-- =====================================================================
+-- 07_governance.sql : Vignette 4 - Horizon governance
+--   roles  ->  classification  ->  masking policies  ->  row access policy
+-- Run live in the notebook (Vignette 4). Review before running: these
+-- statements change access to BP_DEMO objects.
+-- =====================================================================
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE BP_DEMO_WH;
+
+-- ---------------------------------------------------------------- 1. functional roles (RBAC)
+CREATE ROLE IF NOT EXISTS BP_ANALYST          COMMENT = 'Grants analytics: all program areas, PII masked';
+CREATE ROLE IF NOT EXISTS BP_PO_PUBLIC_HEALTH COMMENT = 'Program officers - Public Health portfolio only';
+CREATE ROLE IF NOT EXISTS BP_PO_ENVIRONMENT   COMMENT = 'Program officers - Environment portfolio only';
+CREATE ROLE IF NOT EXISTS BP_GRANTS_COMPLIANCE COMMENT = 'Grants compliance: all areas, full PII';
+
+-- roles roll up to SYSADMIN (best practice: no orphan roles)
+GRANT ROLE BP_ANALYST, BP_PO_PUBLIC_HEALTH, BP_PO_ENVIRONMENT, BP_GRANTS_COMPLIANCE TO ROLE SYSADMIN;
+
+-- read access for every functional role
+GRANT USAGE ON WAREHOUSE BP_DEMO_WH TO ROLE BP_ANALYST;
+GRANT USAGE ON WAREHOUSE BP_DEMO_WH TO ROLE BP_PO_PUBLIC_HEALTH;
+GRANT USAGE ON WAREHOUSE BP_DEMO_WH TO ROLE BP_PO_ENVIRONMENT;
+GRANT USAGE ON WAREHOUSE BP_DEMO_WH TO ROLE BP_GRANTS_COMPLIANCE;
+GRANT USAGE ON DATABASE BP_DEMO TO ROLE BP_ANALYST;
+GRANT USAGE ON DATABASE BP_DEMO TO ROLE BP_PO_PUBLIC_HEALTH;
+GRANT USAGE ON DATABASE BP_DEMO TO ROLE BP_PO_ENVIRONMENT;
+GRANT USAGE ON DATABASE BP_DEMO TO ROLE BP_GRANTS_COMPLIANCE;
+GRANT USAGE ON SCHEMA BP_DEMO.GOV TO ROLE BP_ANALYST;
+GRANT USAGE ON SCHEMA BP_DEMO.GOV TO ROLE BP_PO_PUBLIC_HEALTH;
+GRANT USAGE ON SCHEMA BP_DEMO.GOV TO ROLE BP_PO_ENVIRONMENT;
+GRANT USAGE ON SCHEMA BP_DEMO.GOV TO ROLE BP_GRANTS_COMPLIANCE;
+GRANT SELECT ON TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY TO ROLE BP_ANALYST;
+GRANT SELECT ON TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY TO ROLE BP_PO_PUBLIC_HEALTH;
+GRANT SELECT ON TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY TO ROLE BP_PO_ENVIRONMENT;
+GRANT SELECT ON TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY TO ROLE BP_GRANTS_COMPLIANCE;
+
+-- let the presenter switch roles in the Snowsight role picker
+SET me = CURRENT_USER();
+GRANT ROLE BP_ANALYST TO USER IDENTIFIER($me);
+GRANT ROLE BP_PO_PUBLIC_HEALTH TO USER IDENTIFIER($me);
+GRANT ROLE BP_PO_ENVIRONMENT TO USER IDENTIFIER($me);
+GRANT ROLE BP_GRANTS_COMPLIANCE TO USER IDENTIFIER($me);
+
+-- ---------------------------------------------------------------- 2. masking policies (column-level)
+CREATE OR REPLACE MASKING POLICY BP_DEMO.GOV.MASK_PII_STRING AS (val STRING) RETURNS STRING ->
+  CASE WHEN CURRENT_ROLE() IN ('ACCOUNTADMIN', 'BP_GRANTS_COMPLIANCE') THEN val
+       ELSE '*** MASKED ***' END
+  COMMENT = 'Full value only for compliance; everyone else sees a mask';
+
+CREATE OR REPLACE MASKING POLICY BP_DEMO.GOV.MASK_EMAIL AS (val STRING) RETURNS STRING ->
+  CASE WHEN CURRENT_ROLE() IN ('ACCOUNTADMIN', 'BP_GRANTS_COMPLIANCE') THEN val
+       ELSE REGEXP_REPLACE(val, '^[^@]+', '*****') END          -- keep the domain, hide the person
+  COMMENT = 'Partial mask: domain visible for analytics';
+
+CREATE OR REPLACE MASKING POLICY BP_DEMO.GOV.MASK_TAX_ID AS (val STRING) RETURNS STRING ->
+  CASE WHEN CURRENT_ROLE() IN ('ACCOUNTADMIN', 'BP_GRANTS_COMPLIANCE') THEN val
+       ELSE 'XX-XXX' || RIGHT(val, 4) END                        -- last 4 only
+  COMMENT = 'Tax ID: last 4 digits only outside compliance';
+
+ALTER TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY MODIFY
+  COLUMN contact_name  SET MASKING POLICY BP_DEMO.GOV.MASK_PII_STRING,
+  COLUMN contact_phone SET MASKING POLICY BP_DEMO.GOV.MASK_PII_STRING,
+  COLUMN contact_email SET MASKING POLICY BP_DEMO.GOV.MASK_EMAIL,
+  COLUMN tax_id        SET MASKING POLICY BP_DEMO.GOV.MASK_TAX_ID;
+
+-- ---------------------------------------------------------------- 3. row access policy (row-level)
+-- mapping table: which role may see which program area (business-owned, no code change to grant access)
+CREATE OR REPLACE TABLE BP_DEMO.GOV.PROGRAM_AREA_ACCESS (role_name STRING, program_area STRING);
+INSERT INTO BP_DEMO.GOV.PROGRAM_AREA_ACCESS VALUES
+  ('BP_PO_PUBLIC_HEALTH', 'Public Health'),
+  ('BP_PO_ENVIRONMENT',   'Environment');
+
+CREATE OR REPLACE ROW ACCESS POLICY BP_DEMO.GOV.RAP_PROGRAM_AREA AS (area STRING) RETURNS BOOLEAN ->
+  CURRENT_ROLE() IN ('ACCOUNTADMIN', 'BP_ANALYST', 'BP_GRANTS_COMPLIANCE')     -- portfolio-wide roles
+  OR EXISTS (SELECT 1 FROM BP_DEMO.GOV.PROGRAM_AREA_ACCESS m
+             WHERE m.role_name = CURRENT_ROLE() AND m.program_area = area)
+  COMMENT = 'Program officers see only their own program area';
+
+ALTER TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY ADD ROW ACCESS POLICY BP_DEMO.GOV.RAP_PROGRAM_AREA ON (program_area);
+
+-- ---------------------------------------------------------------- 4. test WITHOUT switching roles
+-- EXECUTE USING POLICY_CONTEXT(CURRENT_ROLE => 'BP_PO_PUBLIC_HEALTH') AS
+--   SELECT program_area, COUNT(*), ANY_VALUE(contact_email), ANY_VALUE(tax_id) FROM BP_DEMO.GOV.GRANTEE_DIRECTORY GROUP BY 1;
+
+-- ---------------------------------------------------------------- 5. undo (for reset)
+-- ALTER TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY DROP ROW ACCESS POLICY BP_DEMO.GOV.RAP_PROGRAM_AREA;
+-- ALTER TABLE BP_DEMO.GOV.GRANTEE_DIRECTORY MODIFY COLUMN contact_name UNSET MASKING POLICY,
+--   COLUMN contact_phone UNSET MASKING POLICY, COLUMN contact_email UNSET MASKING POLICY, COLUMN tax_id UNSET MASKING POLICY;
+-- DROP ROLE IF EXISTS BP_ANALYST; DROP ROLE IF EXISTS BP_PO_PUBLIC_HEALTH; DROP ROLE IF EXISTS BP_PO_ENVIRONMENT; DROP ROLE IF EXISTS BP_GRANTS_COMPLIANCE;
