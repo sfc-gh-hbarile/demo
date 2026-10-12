@@ -15,7 +15,7 @@ It also includes exact cost attribution (AI tokens vs warehouse, per question) a
 
 | Start here | What it is |
 |---|---|
-| [Presentation (Tell / Show / Tell)](FPA-AGENT-DEMO/FPA_Agent_Demo_Presentation.html) | 13-slide presenter aid: the problem, what was built, a five-question run sheet with expected answers, measured costs, and nine ways to extend it for FP&A teams. Download it and open it in a browser; use the arrow keys to move between slides. |
+| [Presentation (Tell / Show / Tell)](FPA-AGENT-DEMO/FPA_Agent_Demo_Presentation.html) | 14-slide presenter aid: the problem, what was built, a five-question run sheet with expected answers, measured costs, and nine ways to extend it for FP&A teams. Download it and open it in a browser; use the arrow keys to move between slides. |
 | [Demo README](FPA-AGENT-DEMO/README.md) | Build order, demo script, review-package workflow, cost monitoring, and cleanup |
 | [Cost estimator app](FPA-AGENT-DEMO/cost_estimator_app/streamlit_app_paste_into_snowsight.py) | Paste into a new Snowsight Streamlit app to project daily, weekly, monthly, and yearly cost |
 

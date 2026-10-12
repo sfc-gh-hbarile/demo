@@ -17,14 +17,14 @@ The agent includes:
 
 ## Presentation
 
-**[FPA_Agent_Demo_Presentation.html](FPA_Agent_Demo_Presentation.html)** is a 13-slide presenter aid structured as **Tell, Show, Tell**. Download it and open it in a browser; use the arrow keys or the on-screen buttons to move between slides.
+**[FPA_Agent_Demo_Presentation.html](FPA_Agent_Demo_Presentation.html)** is a 14-slide presenter aid structured as **Tell, Show, Tell**. Download it and open it in a browser; use the arrow keys or the on-screen buttons to move between slides.
 
 | Phase | Slides | Content |
 |---|---|---|
 | Tell | 1 to 3 | The FP&A problem, the planted EMEA story, and the architecture that was built |
 | Show | 4 to 8 | Run sheet for the five questions with expected answers, then one slide per capability: variance, forecast change and scenario, documents and the approval workflow, and cost |
 | Tell | 9 to 11 | What the audience saw, nine ways to extend it for FP&A teams, and a six-week path from demo to pilot |
-| Appendix | 12 to 13 | Build and run order; presenter checklist with reset steps, timing, and troubleshooting |
+| Appendix | 12 to 14 | Build and run order; presenter checklist with reset steps, timing, and troubleshooting; built-in cost tools vs the demo views |
 
 Every number in the deck comes from this demo's validations and tagged cost runs. Update the deck if you change the data or re-measure costs.
 
@@ -108,57 +108,111 @@ CALL FPA_DEMO.FPA.RESET_DEMO_WORKFLOW();
 
 **Troubleshooting:**
 - **Asking again doesn't create a package:** start a **new chat**. In the same thread the agent sees it already prepared one and may not call the tool again. Check with `SELECT * FROM FPA_DEMO.FPA.REVIEW_PACKAGE_LOG;`.
-- **Approval returns `NOT_FOUND_OR_NOT_PENDING`:** the id doesn't exist (for example, the tables were reset after it was created) or it's already approved. The response lists any `pending_packages`. Earlier versions said `APPROVED` even when 0 rows changed; that's fixed.
+- **Approval returns `NOT_FOUND_OR_NOT_PENDING`:** the id doesn't exist (for example, the tables were reset after it was created) or it's already approved. The response lists any `pending_packages`.
 - **Use `RESET_DEMO_WORKFLOW()` instead of manual `DELETE`s**, and only between demo runs, never between submit and approve.
 
-## Monitoring agent costs
+## Understanding and controlling agent costs
 
-### What an agent call costs
+### What one question costs
+Each question asked to `FPA_AGENT` can incur three kinds of cost. They are billed in two different units.
 
-One question to `FPA_AGENT` can incur three kinds of cost:
+| Cost | What drives it | Billed in | Price used in this demo |
+|---|---|---|---|
+| **Agent tokens** | LLM tokens for orchestration (planning, choosing tools, writing the answer) and Cortex Analyst SQL generation | **AI Credits** | $2.00 on demand (global). Capacity contracts are tiered; see Table 2(b) of the Snowflake Service Consumption Table |
+| **Cortex Search** | Indexed data served by `FPA_ASSUMPTIONS_SEARCH` (per GB per month, not per question) | **AI Credits** | $2.00 |
+| **Warehouse compute** | SQL the agent's tools run on `FPA_AGENT_WH`: Analyst queries, `RUN_SCENARIO`, `SUBMIT_REVIEW_PACKAGE` | **Platform Credits** | $3.00 (Enterprise, AWS US East); your contract rate applies |
 
-| Cost | Where it comes from | Where to see it |
-|---|---|---|
-| **Agent token credits** | LLM tokens for orchestration (planning, choosing tools, writing the answer) and for Cortex Analyst generating SQL from the semantic view | `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY.TOKEN_CREDITS`, split by service and model in `CREDITS_GRANULAR` |
-| **Warehouse compute** | SQL the tools run on `FPA_DEMO_WH`: Analyst queries, `RUN_SCENARIO`, `SUBMIT_REVIEW_PACKAGE` | Per request: `METADATA:sql_query_credits` in the agent view. In total: `WAREHOUSE_METERING_HISTORY` |
-| **Cortex Search** | Serving and indexing for `FPA_ASSUMPTIONS_SEARCH` (billed on its own, not per agent call) | `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_SEARCH_DAILY_USAGE_HISTORY` |
+Token rates per million tokens depend on the orchestration model and are published in **Table 6(d)** of the Service Consumption Table (Cortex Agents). For example, `claude-opus-4-8` is 3.25 input, 16.26 output, 4.07 cache write, and 0.33 cache read AI Credits per million tokens.
 
-Each row in `CORTEX_AGENT_USAGE_HISTORY` is one agent request, with user, role, interface (`metadata:interaction_interface`, for example `sql_function` or `agent_admin_ui`), tokens, and credits. **Requests made in Snowflake CoWork are not in this view**; they are recorded in `SNOWFLAKE_COWORK_USAGE_HISTORY`.
-
-### Observed cost in this account (synthetic test run, 9 Oct 2026)
-
-| Metric | Value |
+### Measured in this demo (synthetic data, October 2026)
+| Measure | Value |
 |---|---|
-| Agent requests | 6 |
-| Token credits | 1.28 total, about **0.21 per question** |
-| Warehouse SQL credits attributed to agent calls | 0.045 |
-| `FPA_DEMO_WH` total for the build day | about 0.19 (includes setup and testing) |
+| Orchestration model | `auto`, which resolved to `claude-opus-4-8` |
+| Context sent per question | about 148K input tokens (instructions, tool definitions, semantic view, skill, tool results); 81% served from the prompt cache |
+| Agent tokens, first ask | **0.196 AI Credits**, about $0.39 |
+| Agent tokens, repeated question | **0.114 AI Credits**, about $0.23 (42% less, from prompt caching) |
+| Warehouse per question | about **0.003 Platform Credits**, about $0.01 |
+| **Total per question** | **about $0.40 first ask, $0.24 repeat** |
+| Share of cost | about 97% AI tokens, 3% warehouse |
+| Same agent pinned to `claude-sonnet-4-6` (`FPA_AGENT_SONNET`, script 14) | same answers on Q1 to Q4, about **31% fewer credits** (0.130 vs 0.190 average, about $0.27 per question) |
 
-Multi-step questions such as the EMEA "why" question and the review package use the most tokens, because the agent loads the skill and makes several tool calls. Single-tool questions such as the headcount lookup or the scenario cost much less.
+Per question, measured first ask vs repeat (AI Credits):
 
-### How to monitor
+| Question | First ask | Repeat | Saving |
+|---|---|---|---|
+| Q1 EMEA margin | 0.202 | 0.188 | about 7% |
+| Q2 forecast changes | 0.341 | 0.177 | 48% |
+| Q3 scenario | 0.053 | 0.047 | about 12% |
+| Q4 headcount | 0.118 | 0.045 | 62% |
 
+Multi-step questions (the EMEA "why" question, the forecast comparison, the review package) cost the most, because the agent loads the skill and makes several tool calls. Single-tool questions cost much less. Only the model's prompt is cached, never the answer, so every repeat still runs the tools; the saving applies while the cache is warm (calls a few minutes apart). These figures come from a small sample on the demo's questions.
+
+### How the numbers were verified
+| Check | Result |
+|---|---|
+| Rates | The credits billed per million tokens match the published rates in Service Consumption Table 6(d). |
+| Bill | Per-request credits in `CORTEX_AGENT_USAGE_HISTORY` (4.059) equal the `CORTEX_AGENTS` line in `METERING_DAILY_HISTORY` (4.059) for the same period. |
+| Warehouse | Per-question warehouse credits from tagged agent queries equal the agent's own reported `sql_query_credits` for every request (20 of 20). |
+| Snowsight | Snowsight **Cost Management** shows the same totals; see below. |
+
+### Levers that reduce cost
+- **Pick the orchestration model.** `auto` picks a model for you; pinning a smaller model (for example `claude-sonnet-4-6`) cut credits by about 31% here with the same answers. Test accuracy on your own questions first.
+- **Keep the context lean.** Instructions, tool descriptions, and the semantic view are sent with every question. Shorter instructions and fewer, well-described tools reduce tokens.
+- **Use one thread for follow-ups.** Follow-up questions in the same conversation reuse the prompt cache.
+- **Use approved tools for heavy logic.** A stored procedure (like `RUN_SCENARIO`) is cheaper and more reliable than having the model reason through calculations.
+- **Keep the warehouse small and isolated.** An XS warehouse with `AUTO_SUSPEND = 60` dedicated to the agent keeps warehouse cost at about 3% and makes it easy to see.
+
+### Built-in Snowflake cost tools (out of the box)
+Use these first. They need no setup and are the source of truth for the bill.
+
+| Where | What to look at | What it tells you |
+|---|---|---|
+| **Snowsight » Admin » Cost Management » Consumption** | Usage Type **AI Services** → service type **CORTEX_AGENTS** (also CORTEX_SEARCH, SNOWFLAKE_COWORK) | Daily AI Credits for all agents in the account |
+| Same page | Usage Type **Compute**, Service Type **Warehouse** → **FPA_AGENT_WH** | Warehouse credits behind the agent, including idle time |
+| **Cost Management » Budgets** | The account budget, or a custom budget that contains `FPA_AGENT` (Cortex Agents are supported objects) | Monthly spending limit with forecast-based notifications, optionally calling a stored procedure. This is the control for AI Credits. Refreshes up to every 6.5 hours (hourly as a low-latency budget) |
+| **Budgets » per-user quotas** | Credit limits for individual users | Caps how much one user can consume |
+| **Cost Management » Resource Monitors** | `FPA_DEMO_RM` | Caps and suspends warehouses (`FPA_DEMO_WH`, `FPA_AGENT_WH`). Doesn't cover AI Credits |
+| **Cost Management » Anomalies** | Unusual daily spend | Alerts when consumption deviates from the normal pattern |
+| `SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY` | `SERVICE_TYPE = 'CORTEX_AGENTS'` | The same daily totals in SQL |
+| `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY` | One row per agent request | User, agent, interface, tokens, and credits, split by model and token type |
+| `SNOWFLAKE.ACCOUNT_USAGE.SNOWFLAKE_COWORK_USAGE_HISTORY` | Requests made in Snowflake CoWork | CoWork usage, which isn't in the agent usage view |
+| **Cortex Code** | *"Using cost-intelligence, show Cortex Agent credits for FPA_AGENT and warehouse credits for FPA_AGENT_WH by day for the last 7 days."* | The same information in plain language |
+
+When comparing Snowsight with SQL, note that Snowsight groups days in **UTC** and its warehouse chart shows compute credits without cloud services. All of these sources update hourly, with a delay of up to a few hours.
+
+### Built-in tools vs. the demo's cost views
+| | Snowsight Cost Management | Demo views and estimator |
+|---|---|---|
+| Purpose | The bill: what the account spent | Unit economics: what one question costs, and why |
+| Granularity | Per day or hour, per warehouse or service type | Per question and per tagged run |
+| Agent cost | One `CORTEX_AGENTS` line for all agents | Per agent and per request, split into cache read, cache write, input, and output |
+| Warehouse behind the agent | Whole-warehouse totals | Only the queries the agent ran (exact, from `QUERY_ATTRIBUTION_HISTORY`), plus the dedicated warehouse for idle time |
+| Excludes build and test work | No | Yes, by run tagging |
+| First ask vs repeat, model comparison | No | Yes |
+| Projection by users and questions per user | No | Yes, with separate AI Credit and Platform Credit prices |
+| Budgets, per-user quotas, resource monitors, anomaly alerts | **Yes** | No; use the built-in tools |
+| Update latency | Hourly, up to a few hours | Same, and per-query attribution can take several hours longer |
+
+Use both: Snowsight to monitor and control spend, and the demo views to explain cost per question and to forecast. On a period with only tagged agent activity, `V_RUN_COSTS` totals match Snowsight's `CORTEX_AGENTS` line plus the `FPA_AGENT_WH` line.
+
+### Monitoring queries
 Run `09_cost_monitoring.sql` as `FPA_DEMO_ROLE`. It includes:
 1. **Summary:** requests, token credits, SQL credits, average credits per request
 2. **Daily by user:** credits per day per user
 3. **Per request:** interface, tokens, and credits for the last 20 calls
-4. **By service and model:** orchestration (`cortex_agents`) vs `cortex_analyst`, from `CREDITS_GRANULAR`
+4. **By model and token type:** cache read, cache write, and input and output credits
 5. **Cortex Search:** credits by day and consumption type
-6. **Warehouse:** daily `FPA_DEMO_WH` credits
+6. **Warehouse:** daily warehouse credits
 7. **Resource monitor:** quota used vs 10 credits per month
 
-Notes:
-- **Latency:** `ACCOUNT_USAGE` views lag by up to a few hours. Check costs after the demo, not during it.
-- **Access:** `FPA_DEMO_ROLE` reads these views through the `SNOWFLAKE.USAGE_VIEWER` database role, so the demo user doesn't need ACCOUNTADMIN.
-- **Guardrail scope:** `FPA_DEMO_RM` caps only warehouse compute; it suspends `FPA_DEMO_WH` at 10 credits per month. Agent token credits are serverless, so the resource monitor does not cap them. Track them with the queries above, or set a Snowflake budget for AI spend.
-- **Plain language:** in CoCo, ask: *"Using cost-intelligence, show Cortex Agent credits for FPA_AGENT and warehouse credits for FPA_DEMO_WH by day for the last 7 days."*
+`FPA_DEMO_ROLE` reads these views through the `SNOWFLAKE.USAGE_VIEWER` and `SNOWFLAKE.GOVERNANCE_VIEWER` database roles, so the demo user doesn't need ACCOUNTADMIN.
 
-## Cost estimator (projecting customer cost)
+## Cost estimator (projecting cost at scale)
 
 ### Three steps
-1. **Measure:** run `CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(8, 'smoke');` (script 11). It asks the 4 read-only demo questions, then asks them again, and logs each call. It costs about 1.5 credits and takes about 8 minutes. For more data, run `(10,'tier_10')`, `(25,'tier_25')` or `(50,'tier_50')`, at roughly 0.15–0.2 credits per call.
-2. **Wait** a few hours for `ACCOUNT_USAGE`. `V_COST_CALIBRATION` then reports average credits for a first ask and for a repeat, and the cache shares.
-3. **Project:** open **Snowsight » Projects » Streamlit » FP&A Agent Cost Estimator** and adjust the inputs.
+1. **Measure:** `CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(8, 'smoke');` (script 11) asks the 4 read-only demo questions twice and logs each call. It uses about 1.5 AI Credits and takes about 8 minutes. For more data, run `(10,'tier_10')`, `(25,'tier_25')` or `(50,'tier_50')`; each call uses roughly 0.05 to 0.35 AI Credits.
+2. **Wait** a few hours for `ACCOUNT_USAGE`. `V_COST_CALIBRATION` then reports average credits for a first ask and a repeat, and the cache shares.
+3. **Project:** open the **FP&A Agent Cost Estimator** Streamlit app and adjust the inputs. To create it, paste `cost_estimator_app/streamlit_app_paste_into_snowsight.py` into a new Snowsight Streamlit app (warehouse runtime).
 
 ### Dashboard inputs
 | Input | Default |
@@ -169,15 +223,16 @@ Notes:
 | Questions per user per day | presets **10 / 25 / 50**, or custom |
 | Working days per month | 21 (weekly = 5 days, yearly = 12 months) |
 | Repeated questions % | 30% |
-| Credits per question | measured first-ask and repeat values, or your own override |
-| Warehouse cost | attributed SQL credits per question, **or** warehouse awake hours per day × 1 credit/hour (XS) |
+| Credits per question | measured first-ask and repeat values from selected tagged runs, or your own values |
+| Warehouse cost | attributed SQL credits per question, **or** warehouse awake hours per day × 1 credit per hour (XS) |
 | Cortex Search credits per day | measured 14-day average |
 
 **Outputs:**
-- daily, weekly, monthly and yearly credits and dollars, split into agent tokens, warehouse and search
-- a comparison of 10, 25 and 50 questions per user
+- daily, weekly, monthly, and yearly credits and dollars, split into agent tokens, warehouse, and search
+- AI token, warehouse, and search share of cost
+- a comparison of 10, 25, and 50 questions per user
 - a chart of monthly cost by number of users
-- the observed actuals: requests measured, credits per question, cache-hit %, cache-write share, and first ask vs repeat
+- observed actuals: requests measured, credits per question, cache-hit %, cache-write share, first ask vs repeat, and tagged runs
 
 ### Formula
 ```
@@ -187,56 +242,21 @@ warehouse       = questions × sql_credits_per_question     (or awake_hours × 1
 total credits   = agent + warehouse + search_per_day;  week = ×5, month = ×working days, year = month × 12
 cost ($)        = (agent + search credits) × AI Credit price + warehouse credits × Platform Credit price
 ```
-I unit-tested the app's formula against hand calculations, including one first-ask question at measured rates (0.196 AI Credits × $2.00 + 0.003 warehouse × $3.00 = $0.401), and it matched for every period and both warehouse methods.
+Check: one first-ask question = 0.196 × $2.00 + 0.003 × $3.00 = **$0.40**.
 
-### Measured in this account (synthetic demo, 9 Oct 2026, model `claude-opus-4-8` via `auto`)
-| Segment | Calls | Avg token credits | Cache-write share | Input served from cache |
-|---|---|---|---|---|
-| All requests | 15 | 0.181 | 55% | 83% |
-| Load test: first ask | 5 | **0.196** | 58% | 81% |
-| Load test: repeat | 4 | **0.114** (42% cheaper) | 42% | 89% |
-
-Warehouse SQL attributed to agent calls averaged about 0.003 credits per question. Cortex Search was close to 0 for this small corpus.
-
-**What the caching numbers mean:**
-- Most of the cost is **cache writes**: the agent's instructions, tool definitions and context are written to the model's prompt cache. A recent repeat reuses more of that cache.
-- The saving depends on the question:
-
-| Question | First ask | Repeat | Saving |
-|---|---|---|---|
-| Q2 forecast changes | 0.341 | 0.177 | 48% |
-| Q4 headcount | 0.118 | 0.045 | 62% |
-| Q1 EMEA margin | 0.202 | 0.188 | about 7% |
-| Q3 scenario | 0.053 | 0.047 | about 12% |
-
-- The answer itself is **not** cached; every repeat still runs the tools. The saving comes only from token-level prompt caching, and only while the cache is warm (calls minutes apart). Don't assume a fixed discount.
-- These figures come from a small sample (one call per question per attempt). Run larger tiers before quoting a customer.
-
-### Example: measured rates, 25 users, 30% repeats, $2.00/AI Credit and $3.00/Platform Credit
+### Example: 25 users, 30% repeats, measured rates, $2.00 per AI Credit and $3.00 per Platform Credit
 | Questions / user / day | Daily | Weekly | Monthly | Yearly |
 |---|---|---|---|---|
 | 10 | $88 | $440 | $1,847 | $22,163 |
 | 25 | $220 | $1,099 | $4,617 | $55,408 |
 | 50 | $440 | $2,199 | $9,235 | $110,817 |
 
-### Validation of cost per question (10 Oct 2026)
-An earlier version of this README priced every credit at $3.00 and showed **$0.59 per question**. That was wrong: agent tokens bill in AI Credits, which have their own price. The checks:
-
-| Check | Result |
-|---|---|
-| **Billed token rates** | 3.25 input / 16.26 output / 4.07 cache write / 0.33 cache read credits per million tokens for `claude-opus-4-8`. These **match** the Snowflake Service Consumption Table, Table 6(d), "Cortex Agents" (effective 9 Oct 2026). |
-| **Reconciles to the bill** | Per-request credits in `CORTEX_AGENT_USAGE_HISTORY` (4.059) **equal** the `CORTEX_AGENTS` service type in `METERING_DAILY_HISTORY` (1.0025 + 3.0568). |
-| **Credit type** | Cortex Agents and Cortex Search bill in **AI Credits**, $2.00 on demand (global; $2.20 regional; capacity tiers $1.88 to $1.96, Table 2(b)). The Platform Credit discount doesn't apply to AI Credits. Warehouses bill in **Platform Credits**: $3.00 Enterprise, AWS US East. |
-| **Corrected cost** | First ask about **$0.40** (0.196 × $2.00 + 0.003 × $3.00); repeat about **$0.24**. AI tokens are about 97% of the dollars. |
-| **What drives it** | About 148K input tokens per question: instructions, tool definitions, semantic view, skill, and tool results. 81% are served from cache. `auto` orchestration resolved to `claude-opus-4-8`. |
-| **Model lever** | `FPA_AGENT_SONNET` (same spec, `claude-sonnet-4-6`) returned the same numbers on Q1 to Q4 and cost about **31% less** (0.130 vs 0.190 credits on average, about $0.27 per question). It saved 6 to 78% depending on the question. This is one run per question; Sonnet produced more output tokens on Q1 and Q2. |
-
-Before quoting a customer: use their contract's AI Credit price, run `RUN_AGENT_LOAD_TEST` with their own questions, and compare `auto` with a pinned model.
-
-**Caveats:**
-- These are estimates based on this demo's question mix, tools and model.
-- Longer multi-turn threads, more tools, different models or a customer's own questions will change the cost per question. Re-measure with their questions.
-- The warehouse "attributed" method understates real warehouse cost, because XS warehouses bill a 60-second minimum on each resume. For steady use, use the "awake hours" method.
+**To estimate your own cost:**
+- Use your contract's AI Credit and Platform Credit prices.
+- Measure with your own questions (`RUN_AGENT_LOAD_TEST` or a tagged pilot session).
+- Compare `auto` with a pinned orchestration model.
+- Longer multi-turn conversations, more tools, or larger documents change the cost per question.
+- The "attributed" warehouse method counts only query time. When the warehouse is idle most of the day, the 60-second minimum on each resume adds cost; use the "awake hours" method instead.
 
 ## Accurate cost attribution (tagged runs)
 
@@ -257,8 +277,8 @@ Validation in this account: across 20 agent requests, the tagged warehouse credi
 -- Load test: registers the run automatically
 CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(10, 'tier_10');
 
--- Live demo or customer pilot: wrap the session
-CALL FPA_DEMO.FPA.START_COST_RUN('customer_pilot_wk1', 'DEMO_SESSION');   -- returns run_id
+-- Live demo or pilot: wrap the session
+CALL FPA_DEMO.FPA.START_COST_RUN('pilot_wk1', 'DEMO_SESSION');   -- returns run_id
 --   ... ask the agent questions as the same user (Snowsight agent, CoWork, or SQL) ...
 CALL FPA_DEMO.FPA.END_COST_RUN('<run_id>');
 
@@ -279,7 +299,7 @@ SELECT * FROM FPA_DEMO.FPA.V_AGENT_QUESTION_COSTS WHERE run_label = 'tier_10';
 ### Notes
 - `QUERY_ATTRIBUTION_HISTORY` lags more than the agent usage view, sometimes several hours. Until it catches up, `tagged_wh_credits` shows 0 for a recent run; the agent's `reported_sql_credits` lags in the same way.
 - Agents also issue a skill-lookup `LIST` on the **user's default warehouse**. That's why `FPA_DEMO_USER`'s default is `FPA_AGENT_WH`. These queries are tagged, so they're still counted wherever they run.
-- `START_COST_RUN` also sets a session `QUERY_TAG` with the run_id, for readability in query history. Clients that set their own tag override it (Cortex Code does), but that doesn't affect attribution, which uses Snowflake's agent tags and the run window.
+- `START_COST_RUN` also sets a session `QUERY_TAG` with the run_id, for readability in query history. Some clients set their own query tag, which replaces it; attribution doesn't depend on it, because it uses Snowflake's agent tags and the run window.
 - The estimator app's **Calibration source** picker lets you calibrate from selected tagged runs only.
 
 ## Notes
@@ -287,4 +307,4 @@ SELECT * FROM FPA_DEMO.FPA.V_AGENT_QUESTION_COSTS WHERE run_label = 'tier_10';
 - `CREATE AGENT` is a schema-level privilege, not an account-level one. The demo role owns the schema, so it has the privilege without a grant.
 - `SNOWFLAKE.CORTEX.DATA_AGENT_RUN` requires a constant request string, which is why script 08 runs one statement per question.
 - To edit the skill, change `agent_skills/fpa-variance-review/SKILL.md` and re-run script 06. The agent reads the skill from the stage on demand, so you don't need to recreate the agent.
-- Cost guardrail: `FPA_DEMO_RM` notifies at 80% and suspends `FPA_DEMO_WH` at 100% of 10 credits per month.
+- Cost guardrail: `FPA_DEMO_RM` notifies at 80% and suspends `FPA_DEMO_WH` and `FPA_AGENT_WH` at 100% of 10 credits per month. It covers warehouses only; use a Snowflake budget for AI Credits.

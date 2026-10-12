@@ -27,7 +27,8 @@
     { "id": "tell-extend", "title": "Tell: extending it for FP&A teams", "producerNotes": "Ideas, not built in the demo." },
     { "id": "next-steps", "title": "From demo to pilot", "producerNotes": "Narrative." },
     { "id": "appendix-build", "title": "Appendix A: build and run order", "producerNotes": "Scripts in FPA-AGENT-DEMO." },
-    { "id": "appendix-presenter", "title": "Appendix B: presenter checklist", "producerNotes": "Reset and timing notes." }
+    { "id": "appendix-presenter", "title": "Appendix B: presenter checklist", "producerNotes": "Reset and timing notes." },
+    { "id": "appendix-cost-tools", "title": "Appendix C: built-in cost tools vs demo views", "producerNotes": "Snowsight Cost Management, budgets, per-user quotas, resource monitors, anomalies, ACCOUNT_USAGE; reconciled 2026-10-10." }
   ]
 }
 </script>
@@ -398,7 +399,7 @@ SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
         <li><b>Driver:</b> about 148K input tokens per question (instructions, tools, semantic view, skill, tool results), mostly served from cache</li>
         <li><b>Levers:</b> pin a smaller orchestration model, keep instructions and tool descriptions lean, and reuse threads for follow-up questions</li>
       </ul>
-      <div class="note">The resource monitor caps warehouse credits only. Use a Snowflake budget to cap AI spend.</div>
+      <div class="note">The resource monitor caps warehouse credits only. Use a Snowflake budget to control AI spend. Built-in cost tools: Appendix C.</div>
     </div>
   </div>
 </section>
@@ -464,7 +465,7 @@ SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
       <tr><td class="k">05</td><td><code>05_procedures.sql</code></td><td>Scenario, submit, approve, and reset procedures; package status view</td></tr>
       <tr><td class="k">06-07</td><td><code>06_agent_skill_upload.sql</code>, <code>07_agent.sql</code></td><td>Agent skill on a stage; <code>FPA_AGENT</code></td></tr>
       <tr><td class="k">08</td><td><code>08_test_agent_questions.sql</code></td><td>Runs the five questions and resets the workflow</td></tr>
-      <tr><td class="k">09-13</td><td>Cost scripts</td><td>Cost monitoring, cost views, load test, estimator app, dedicated agent warehouse, tagged runs</td></tr>
+      <tr><td class="k">09-14</td><td>Cost scripts</td><td>Cost monitoring, cost views, load test, estimator app, dedicated agent warehouse and tagged runs, model cost comparison</td></tr>
       <tr><td class="k">99</td><td><code>99_cleanup.sql</code></td><td>Drops everything. Run only when finished</td></tr>
     </tbody>
   </table></div>
@@ -510,9 +511,51 @@ SELECT * FROM FPA_DEMO.FPA.V_REVIEW_PACKAGE_STATUS;
   <div class="note">All data is synthetic. Acme Corp and all people named are fictional.</div>
 </section>
 
+<!-- C. Cost tools -->
+<section class="slide" id="appendix-cost-tools">
+  <div class="tag">Appendix C: monitor and control cost</div>
+  <h1>Built-in cost tools, and what the demo views add</h1>
+  <div class="sub">Start with what Snowflake provides out of the box; it is the source of truth for the bill. The demo's views explain the cost of each question and forecast cost at scale.</div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Out of the box in Snowsight and SQL</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Where</th><th>What it shows or controls</th></tr></thead>
+        <tbody>
+          <tr><td>Cost Management » Consumption, <b>AI Services</b></td><td><code>CORTEX_AGENTS</code>, <code>CORTEX_SEARCH</code>, <code>SNOWFLAKE_COWORK</code> credits by day</td></tr>
+          <tr><td>Consumption, <b>Compute » Warehouse</b></td><td><code>FPA_AGENT_WH</code>, the warehouse behind the agent, including idle time</td></tr>
+          <tr><td><b>Budgets</b></td><td>Account budget, or a custom budget containing the agent; forecast-based alerts and optional actions. The control for AI Credits</td></tr>
+          <tr><td>Per-user quotas</td><td>Credit limits for individual users</td></tr>
+          <tr><td><b>Resource monitors</b></td><td>Cap and suspend warehouses (not AI Credits)</td></tr>
+          <tr><td>Anomalies</td><td>Alerts when daily spend departs from the normal pattern</td></tr>
+          <tr><td><code>ACCOUNT_USAGE</code> views</td><td><code>METERING_DAILY_HISTORY</code>, <code>CORTEX_AGENT_USAGE_HISTORY</code>, <code>SNOWFLAKE_COWORK_USAGE_HISTORY</code></td></tr>
+          <tr><td>Cortex Code</td><td>Ask the cost-intelligence skill in plain language</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">Snowsight groups days in UTC. All sources update hourly, with a delay of up to a few hours.</div>
+    </div>
+    <div class="card">
+      <h3>Snowsight Cost Management vs demo views</h3>
+      <div class="tw"><table>
+        <thead><tr><th></th><th>Cost Management</th><th>Demo views</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Answers</td><td>What did we spend?</td><td>What does one question cost, and why?</td></tr>
+          <tr><td class="k">Grain</td><td>Day or hour, warehouse or service</td><td>Question and tagged run</td></tr>
+          <tr><td class="k">Agent cost</td><td>One line for all agents</td><td>Per agent, per request, by token type</td></tr>
+          <tr><td class="k">Warehouse</td><td>Whole warehouse</td><td>Only the agent's own queries</td></tr>
+          <tr><td class="k">Excludes build and test</td><td>No</td><td>Yes, by run tagging</td></tr>
+          <tr><td class="k">Forecast at scale</td><td>No</td><td>Yes, with AI and Platform Credit prices</td></tr>
+          <tr><td class="k">Limits and alerts</td><td><b>Yes</b></td><td>No</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">They reconcile: for a period with only tagged agent activity, run totals equal the <code>CORTEX_AGENTS</code> line plus the <code>FPA_AGENT_WH</code> line.</div>
+    </div>
+  </div>
+</section>
+
 </div>
 
-<div class="nav"><button id="prev" type="button">&#9664; Prev</button><span id="ct">1 / 13</span><button id="next" type="button">Next &#9654;</button></div>
+<div class="nav"><button id="prev" type="button">&#9664; Prev</button><span id="ct">1 / 14</span><button id="next" type="button">Next &#9654;</button></div>
 <script>
 (function(){
   var s=Array.prototype.slice.call(document.querySelectorAll('.slide')),i=0;
