@@ -205,7 +205,15 @@ Run `09_cost_monitoring.sql` as `FPA_DEMO_ROLE`. It includes:
 ### Three steps
 1. **Measure:** `CALL FPA_DEMO.FPA.RUN_AGENT_LOAD_TEST(8, 'smoke');` (script 11) asks the 4 read-only demo questions twice and logs each call. It uses about 1.5 AI Credits and takes about 8 minutes. For more data, run `(10,'tier_10')`, `(25,'tier_25')` or `(50,'tier_50')`; each call uses roughly 0.05 to 0.35 AI Credits.
 2. **Wait** a few hours for `ACCOUNT_USAGE`. `V_COST_CALIBRATION` then reports average credits for a first ask and a repeat, and the cache shares.
-3. **Project:** open the **FP&A Agent Cost Estimator** Streamlit app and adjust the inputs. To create it, paste `cost_estimator_app/streamlit_app_paste_into_snowsight.py` into a new Snowsight Streamlit app (warehouse runtime).
+3. **Project:** open the **FP&A Agent Cost Estimator** Streamlit app and adjust the inputs.
+
+### Install the app
+The app is `cost_estimator_app/streamlit_app.py`. It runs on the SPCS container runtime with the packages included in Streamlit in Snowflake, so no external access integration is needed. Install it using either option:
+
+- **Snowsight:** switch to role `FPA_DEMO_ROLE`, go to **Projects » Streamlit » + Streamlit App**, and choose database `FPA_DEMO`, schema `FPA`, query warehouse `FPA_DEMO_WH`, and compute pool `SYSTEM_COMPUTE_POOL_CPU`. Replace the sample code with the contents of `streamlit_app.py`, then run it.
+- **SQL:** run `12_deploy_cost_estimator_app.sql`. It uploads `streamlit_app.py` and `pyproject.toml` and creates `FPA_DEMO.FPA.FPA_AGENT_COST_ESTIMATOR`.
+
+The app reads the cost views, so run it as `FPA_DEMO_ROLE`.
 
 ### Dashboard inputs
 | Input | Default |
