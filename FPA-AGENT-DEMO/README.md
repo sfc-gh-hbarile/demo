@@ -224,14 +224,15 @@ The app reads the cost views, so run it as `FPA_DEMO_ROLE`.
 | Questions per user per day | presets **10 / 25 / 50**, or custom |
 | Working days per month | 21 (weekly = 5 days, yearly = 12 months) |
 | Repeated questions % | 30% |
-| Credits per question | measured first-ask and repeat values from selected tagged runs, or your own values |
+| Agent model | measured `FPA_AGENT` (auto), measured `claude-sonnet-4-6`, or your own credits per question |
 | Warehouse cost | attributed SQL credits per question, **or** warehouse awake hours per day × 1 credit per hour (XS) |
 | Cortex Search credits per day | measured 14-day average |
 
-**Outputs:**
-- daily, weekly, monthly, and yearly credits and dollars, split into agent tokens, warehouse, and search
-- AI token, warehouse, and search share of cost
-- a comparison of 10, 25, and 50 questions per user
+**Outputs, in reading order:**
+1. cost of one question: new, repeated, and average
+2. cost of one user per day, week, month, and year
+3. cost for the whole team, with the AI token, warehouse, and search share
+4. 10, 25, and 50 questions per user, with team questions per day, cost per question, and per-user monthly cost
 - a chart of monthly cost by number of users
 - observed actuals: requests measured, credits per question, cache-hit %, cache-write share, first ask vs repeat, and tagged runs
 
@@ -245,12 +246,22 @@ cost ($)        = (agent + search credits) × AI Credit price + warehouse credit
 ```
 Check: one first-ask question = 0.196 × $2.00 + 0.003 × $3.00 = **$0.40**.
 
-### Example: 25 users, 30% repeats, measured rates, $2.00 per AI Credit and $3.00 per Platform Credit
-| Questions / user / day | Daily | Weekly | Monthly | Yearly |
-|---|---|---|---|---|
-| 10 | $88 | $440 | $1,847 | $22,163 |
-| 25 | $220 | $1,099 | $4,617 | $55,408 |
-| 50 | $440 | $2,199 | $9,235 | $110,817 |
+### Example at measured rates ($2.00 per AI Credit, $3.00 per Platform Credit, 30% repeated questions)
+
+**Per question and per user**
+
+| | `FPA_AGENT` (auto, resolved to Opus) | Pinned to `claude-sonnet-4-6` |
+|---|---|---|
+| Average cost per question | **$0.35** | **$0.27** |
+| One user, 10 questions a day | $3.52 per day, about $74 per month | $2.69 per day, about $56 per month |
+| One user, 25 questions a day | $8.79 per day, about $185 per month | $6.73 per day, about $141 per month |
+
+**Whole team of 25 users** (`FPA_AGENT`)
+| Questions per user per day | Team questions per day | Daily | Weekly | Monthly | Yearly |
+|---|---|---|---|---|---|
+| 10 | 250 | $88 | $440 | $1,847 | $22,163 |
+| 25 | 625 | $220 | $1,099 | $4,617 | $55,408 |
+| 50 | 1,250 | $440 | $2,199 | $9,235 | $110,817 |
 
 **To estimate your own cost:**
 - Use your contract's AI Credit and Platform Credit prices.

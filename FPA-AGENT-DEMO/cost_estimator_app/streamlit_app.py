@@ -150,15 +150,27 @@ repeat_pct = st.sidebar.slider("Repeated questions (%)", 0, 100, 30,
                                help="Share of questions that repeat a recent question. Repeats reuse the "
                                     "prompt cache and usually cost less.")
 
-st.sidebar.subheader("Credits per question")
-use_measured = st.sidebar.checkbox("Use measured values", value=True)
-if use_measured:
+st.sidebar.subheader("Agent model")
+# Measured 10 Oct 2026 on the demo questions (script 14). Sonnet repeat cost was not measured separately;
+# the first-ask value is used for both, which is conservative.
+SONNET_MEASURED = 0.130
+model_choice = st.sidebar.radio(
+    "Credits per question",
+    ["Measured: FPA_AGENT (auto, Opus)", "Measured: claude-sonnet-4-6", "Enter my own"],
+    help="Credits per question depend mostly on the orchestration model. Values come from tagged test runs.")
+if model_choice.startswith("Measured: FPA_AGENT"):
     cred_first, cred_repeat = measured_first, measured_repeat
-    st.sidebar.caption(f"First ask: {cred_first:.4f} | Repeat: {cred_repeat:.4f} credits"
-                       + ("" if has_repeat else " (no repeat data yet, overall average used)"))
+    model_note = "FPA_AGENT, orchestration auto (resolved to claude-opus-4-8)"
+elif model_choice.startswith("Measured: claude-sonnet"):
+    cred_first = cred_repeat = SONNET_MEASURED
+    model_note = "FPA_AGENT_SONNET, claude-sonnet-4-6 (4-question test; repeat discount not applied)"
 else:
     cred_first = st.sidebar.number_input("First-ask credits", min_value=0.0, value=round(measured_first, 4), format="%.4f")
     cred_repeat = st.sidebar.number_input("Repeat credits", min_value=0.0, value=round(measured_repeat, 4), format="%.4f")
+    model_note = "values entered manually"
+st.sidebar.caption(f"First ask {cred_first:.3f} | repeat {cred_repeat:.3f} AI Credits"
+                   + ("" if has_repeat or not model_choice.startswith("Measured: FPA_AGENT")
+                      else " (no repeat data yet, overall average used)"))
 
 st.sidebar.subheader("Warehouse")
 wh_label = st.sidebar.radio("Warehouse cost method", ["Attributed SQL per question", "Warehouse uptime hours"],
@@ -176,61 +188,95 @@ else:
 search_day = st.sidebar.number_input("Cortex Search credits per day", min_value=0.0,
                                      value=round(search_default, 4), format="%.4f")
 
-# ---------------- Projection ----------------
+# ---------------- Results ----------------
+blend_credits = cred_first * (1 - repeat_pct / 100) + cred_repeat * (repeat_pct / 100)
+wh_per_q_dollars = sql_per_q * wh_price if wh_mode == "attributed" else 0.0
+cost_first = cred_first * price + wh_per_q_dollars
+cost_repeat = cred_repeat * price + wh_per_q_dollars
+cost_blend = blend_credits * price + wh_per_q_dollars
+
 proj = project(users, qpu_day, repeat_pct, cred_first, cred_repeat, sql_per_q,
                wh_mode, wh_hours, search_day, work_days, price, wh_price)
 by = proj.set_index("Period")
 
+st.subheader("1. Cost of one question")
+q1, q2, q3 = st.columns(3)
+q1.metric("New question", f"${cost_first:,.2f}", f"{cred_first:.3f} AI Credits", delta_color="off")
+q2.metric("Repeated question", f"${cost_repeat:,.2f}", f"{cred_repeat:.3f} AI Credits", delta_color="off")
+q3.metric(f"Average ({repeat_pct}% repeats)", f"${cost_blend:,.2f}", f"{blend_credits:.3f} AI Credits", delta_color="off")
+st.caption(f"Model: {model_note}. AI Credits at ${price:.2f}; warehouse at ${wh_price:.2f} per Platform Credit "
+           f"(about ${wh_per_q_dollars:.3f} per question).")
+
+st.subheader(f"2. Cost of one user asking {qpu_day} questions a day")
+per_user_day = by.loc["Daily", "Total $"] / users
+u1, u2, u3, u4 = st.columns(4)
+u1.metric("Per day", f"${per_user_day:,.2f}")
+u2.metric("Per week", f"${per_user_day * 5:,.2f}")
+u3.metric("Per month", f"${per_user_day * work_days:,.2f}")
+u4.metric("Per year", f"${per_user_day * work_days * 12:,.0f}")
+
+st.subheader(f"3. Cost for {users} users ({users * qpu_day:,} questions a day)")
 cols = st.columns(4)
 for col, period in zip(cols, ("Daily", "Weekly", "Monthly", "Yearly")):
-    col.metric(f"{period} cost", money(by.loc[period, "Total $"]), f"{by.loc[period, 'Total credits']:,.1f} credits",
-               delta_color="off")
-
+    col.metric(f"Team {period.lower()}", money(by.loc[period, "Total $"]),
+               f"{by.loc[period, 'Questions']:,.0f} questions", delta_color="off")
 split = by.loc["Daily", ["Agent tokens", "Warehouse", "Cortex Search"]]
-tot = float(split.sum()) or 1.0
-s1, s2, s3 = st.columns(3)
-s1.metric("AI token share", f"{split['Agent tokens'] / tot:.1%}")
-s2.metric("Warehouse share", f"{split['Warehouse'] / tot:.1%}")
-s3.metric("Cortex Search share", f"{split['Cortex Search'] / tot:.1%}")
+tot_usd = float(split["Agent tokens"] * price + split["Cortex Search"] * price + split["Warehouse"] * wh_price) or 1.0
+st.caption(f"Share of cost: AI tokens {split['Agent tokens'] * price / tot_usd:.0%} | "
+           f"warehouse {split['Warehouse'] * wh_price / tot_usd:.0%} | "
+           f"Cortex Search {split['Cortex Search'] * price / tot_usd:.0%}. "
+           f"Week = 5 working days, month = {work_days} working days, year = 12 months.")
 
-st.subheader("Projection")
-show = proj.copy()
-for c in ("Agent tokens", "Warehouse", "Cortex Search", "Total credits"):
-    show[c] = show[c].map(lambda v: f"{v:,.2f}")
-show["Questions"] = show["Questions"].map(lambda v: f"{v:,.0f}")
-show["Total $"] = proj["Total $"].map(money)
-st.dataframe(show, hide_index=True, use_container_width=True)
-st.caption(f"{users} users x {qpu_day} questions/day = {users * qpu_day:,} questions/day | weekly = 5 working days | "
-           f"monthly = {work_days} days | yearly = 12 months | ${price:.2f}/AI Credit, ${wh_price:.2f}/Platform Credit")
+st.subheader(f"4. Compare 10, 25, and 50 questions per user ({users} users)")
+tier_rows = []
+for t in TIERS:
+    m = project(users, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
+                wh_mode, wh_hours, search_day, work_days, price, wh_price).set_index("Period")
+    tier_rows.append({
+        "Questions per user per day": t,
+        "Team questions per day": f"{users * t:,}",
+        "Cost per question": f"${m.loc['Daily', 'Total $'] / (users * t):,.2f}",
+        "Per user per month": f"${m.loc['Monthly', 'Total $'] / users:,.0f}",
+        f"Team per day": money(m.loc["Daily", "Total $"]),
+        f"Team per month": money(m.loc["Monthly", "Total $"]),
+        f"Team per year": money(m.loc["Yearly", "Total $"]),
+    })
+st.dataframe(pd.DataFrame(tier_rows), hide_index=True, width="stretch")
 
-left, right = st.columns(2)
-with left:
-    st.subheader("10 / 25 / 50 questions per user")
-    tier_rows = []
+st.subheader("5. Monthly team cost by number of users")
+curve = []
+for u in sorted({1, 5, 10, 25, 50, 100, 250, 500, users}):
     for t in TIERS:
-        m = project(users, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
+        m = project(u, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
                     wh_mode, wh_hours, search_day, work_days, price, wh_price).set_index("Period")
-        tier_rows.append({"Questions / user / day": t, "Daily": money(m.loc["Daily", "Total $"]),
-                          "Monthly": money(m.loc["Monthly", "Total $"]), "Yearly": money(m.loc["Yearly", "Total $"]),
-                          "Monthly credits": f'{m.loc["Monthly", "Total credits"]:,.1f}'})
-    st.dataframe(pd.DataFrame(tier_rows), hide_index=True, use_container_width=True)
-with right:
-    st.subheader("Monthly cost by number of users")
-    curve = []
-    for u in sorted({1, 5, 10, 25, 50, 100, 250, 500, users}):
-        for t in TIERS:
-            m = project(u, t, repeat_pct, cred_first, cred_repeat, sql_per_q,
-                        wh_mode, wh_hours, search_day, work_days, price, wh_price).set_index("Period")
-            curve.append({"Users": u, "Questions/user/day": str(t), "Monthly $": m.loc["Monthly", "Total $"]})
-    chart = alt.Chart(pd.DataFrame(curve)).mark_line(point=True).encode(
-        x="Users:Q", y=alt.Y("Monthly $:Q", axis=alt.Axis(format="$,.0f")),
-        color="Questions/user/day:N",
-        tooltip=["Users", "Questions/user/day", alt.Tooltip("Monthly $:Q", format="$,.0f")])
-    st.altair_chart(chart, use_container_width=True)
+        curve.append({"Users": u, "Questions per user per day": str(t), "Monthly $": m.loc["Monthly", "Total $"]})
+chart = alt.Chart(pd.DataFrame(curve)).mark_line(point=True).encode(
+    x="Users:Q", y=alt.Y("Monthly $:Q", axis=alt.Axis(format="$,.0f")),
+    color="Questions per user per day:N",
+    tooltip=["Users", "Questions per user per day", alt.Tooltip("Monthly $:Q", format="$,.0f")])
+st.altair_chart(chart, width="stretch")
+
+with st.expander("Full projection in credits"):
+    show = proj.copy()
+    for c in ("Agent tokens", "Warehouse", "Cortex Search", "Total credits"):
+        show[c] = show[c].map(lambda v: f"{v:,.2f}")
+    show["Questions"] = show["Questions"].map(lambda v: f"{v:,.0f}")
+    show["Total $"] = proj["Total $"].map(money)
+    st.dataframe(show, hide_index=True, width="stretch")
+
+with st.expander("What drives cost per question, and how to lower it"):
+    st.markdown("""
+- Each question sends the agent's instructions, tool definitions, semantic view, and skill to the model
+  (about 148K tokens here). Most of it is served from the prompt cache, but writing the cache is the largest cost.
+- **Model choice is the biggest lever.** Pinning `claude-sonnet-4-6` used about 31% fewer credits with the same answers.
+- **Keep instructions and tool descriptions short**, and remove tools the agent doesn't need.
+- **Ask follow-ups in the same conversation** so the prompt cache is reused.
+- Simple lookups (for example the headcount question) cost far less than multi-step "why" questions.
+""")
 
 # ---------------- Observed actuals ----------------
 st.divider()
-st.subheader("Observed actuals (this account)")
+st.subheader("Measured in this account")
 if allreq is not None and allreq["requests"]:
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Agent requests measured", f"{int(allreq['requests'])}")
@@ -243,18 +289,18 @@ if not runs.empty:
     st.markdown("**Tagged runs** (agent tokens + exact compute of the agent's own tool queries)")
     st.dataframe(runs[["run_label", "run_type", "user_name", "start_ts", "questions", "token_credits",
                        "tagged_wh_credits", "metered_agent_wh", "harness_credits_excluded", "token_pct", "wh_pct"]],
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")
 
 if not sel.empty and has_repeat:
     st.info(f"Repeated questions cost {measured_repeat / measured_first:.0%} of a first ask "
             f"({measured_repeat:.4f} vs {measured_first:.4f} credits).")
 
 with st.expander("Per-question costs in selected runs"):
-    st.dataframe(sel, hide_index=True, use_container_width=True)
+    st.dataframe(sel, hide_index=True, width="stretch")
 
 with st.expander("Recent agent requests"):
     try:
-        st.dataframe(load_recent_requests(), hide_index=True, use_container_width=True)
+        st.dataframe(load_recent_requests(), hide_index=True, width="stretch")
     except Exception as e:
         st.write(f"Unavailable: {e}")
 
