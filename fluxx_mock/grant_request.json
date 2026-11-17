@@ -1,0 +1,104 @@
+{
+  "records": {
+    "grant_request": [
+      {
+        "grant_id": "FLX-2026-00901",
+        "organization_name": "Nairobi Safe Streets Coalition",
+        "program_area": "Public Health",
+        "initiative": "Road Safety",
+        "grant_type": "Project",
+        "region": "Africa",
+        "country": "Kenya",
+        "program_officer": "Raj Patel",
+        "status": "Submitted",
+        "risk_rating": "Medium",
+        "reviewer_score": 8.4,
+        "matching_funds_required": true,
+        "requested_amount": 750000,
+        "approved_amount": null,
+        "duration_months": 36,
+        "currency": "USD",
+        "submitted_date": "2026-11-17",
+        "decision_date": null,
+        "last_modified": "2026-11-17T18:00:00Z",
+        "reviewer_notes": "Reviewer assessment for the Public Health proposal under the Road Safety initiative. The coalition has a strong record of working with the Nairobi City County transport department and has already piloted speed-enforcement cameras on two arterial roads. Government partners have signed letters of support. However, matching funds from the county are not yet confirmed and the budget assumes a 2027 procurement timeline that may slip. Outcome measurement relies on police crash data, which is known to under-report pedestrian injuries.",
+        "budget_breakdown": [
+          {"line_item": "Personnel", "amount": 180000},
+          {"line_item": "Program Delivery", "amount": 320000},
+          {"line_item": "Evaluation & Data", "amount": 110000},
+          {"line_item": "Advocacy & Communications", "amount": 60000},
+          {"line_item": "Overhead", "amount": 80000}
+        ],
+        "outcome_targets": [
+          {"kpi": "Road deaths per 100k (target corridors)", "baseline": 28, "target": 18},
+          {"kpi": "Km of road with enforced speed limits", "baseline": 12, "target": 140}
+        ]
+      },
+      {
+        "grant_id": "FLX-2026-00902",
+        "organization_name": "Dhaka Clean Air Network",
+        "program_area": "Environment",
+        "initiative": "Clean Air Cities",
+        "grant_type": "Capacity Building",
+        "region": "Asia",
+        "country": "Bangladesh",
+        "program_officer": "Daniel Cho",
+        "status": "Submitted",
+        "risk_rating": "High",
+        "reviewer_score": 7.1,
+        "matching_funds_required": false,
+        "requested_amount": 420000,
+        "approved_amount": null,
+        "duration_months": 24,
+        "currency": "USD",
+        "submitted_date": "2026-11-17",
+        "decision_date": null,
+        "last_modified": "2026-11-17T18:00:00Z",
+        "reviewer_notes": "Reviewer assessment for the Environment proposal under the Clean Air Cities initiative. The network proposes a city-wide low-cost PM2.5 sensor grid and public dashboard. The technical approach is sound, but the organization is young, has a two-person finance team, and has never managed a grant of this size. Political sensitivity around brick-kiln regulation could delay policy adoption. The evaluation plan is thin and lacks a clear baseline.",
+        "budget_breakdown": [
+          {"line_item": "Personnel", "amount": 95000},
+          {"line_item": "Technology", "amount": 190000},
+          {"line_item": "Evaluation & Data", "amount": 45000},
+          {"line_item": "Advocacy & Communications", "amount": 50000},
+          {"line_item": "Overhead", "amount": 40000}
+        ],
+        "outcome_targets": [
+          {"kpi": "Cities with air monitoring", "baseline": 1, "target": 4},
+          {"kpi": "Public air-quality alerts issued", "baseline": 0, "target": 500}
+        ]
+      },
+      {
+        "grant_id": "FLX-2026-00903",
+        "organization_name": "Andes Mobility Institute",
+        "program_area": "Public Health",
+        "initiative": "Road Safety",
+        "grant_type": "General Operating",
+        "region": "Latin America",
+        "country": "Peru",
+        "program_officer": "Maria Gonzalez",
+        "status": "Submitted",
+        "risk_rating": "Low",
+        "reviewer_score": 9.0,
+        "matching_funds_required": false,
+        "requested_amount": 300000,
+        "approved_amount": null,
+        "duration_months": 24,
+        "currency": "USD",
+        "submitted_date": "2026-11-17",
+        "decision_date": null,
+        "last_modified": "2026-11-17T18:00:00Z",
+        "reviewer_notes": "Reviewer assessment for the Public Health proposal under the Road Safety initiative. The institute is a long-standing grantee with clean audits for five consecutive years and a proven helmet-law advocacy campaign in Lima. Leadership is credible and the budget is well proportioned. The main risk is overlap with a World Bank road-safety loan in the same municipalities, which should be coordinated to avoid duplicated effort.",
+        "budget_breakdown": [
+          {"line_item": "Personnel", "amount": 120000},
+          {"line_item": "Program Delivery", "amount": 110000},
+          {"line_item": "Evaluation & Data", "amount": 30000},
+          {"line_item": "Overhead", "amount": 40000}
+        ],
+        "outcome_targets": [
+          {"kpi": "Policies enacted", "baseline": 1, "target": 3},
+          {"kpi": "Helmet-use rate (%)", "baseline": 61, "target": 85}
+        ]
+      }
+    ]
+  }
+}
