@@ -3,6 +3,7 @@
 -- COPY INTO / clone / Time Travel) and Vignette 4 (PII to classify + mask).
 -- Creates 3 regional "grantee contact directory" exports on a stage.
 -- =====================================================================
+USE ROLE ACCOUNTADMIN;
 USE WAREHOUSE BP_DEMO_WH;
 CREATE SCHEMA IF NOT EXISTS BP_DEMO.GOV COMMENT = 'Governance: roles mapping, policies, governed objects';
 
@@ -49,3 +50,4 @@ COPY INTO @BP_DEMO.RAW.SAMPLE_FILES/grantee_directory_apac.csv
   FILE_FORMAT = (TYPE = CSV COMPRESSION = NONE FIELD_OPTIONALLY_ENCLOSED_BY = '"') HEADER = TRUE SINGLE = TRUE OVERWRITE = TRUE;
 
 ALTER STAGE BP_DEMO.RAW.SAMPLE_FILES REFRESH;
+LIST @BP_DEMO.RAW.SAMPLE_FILES;

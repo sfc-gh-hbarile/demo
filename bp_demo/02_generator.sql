@@ -2,13 +2,16 @@
 -- 02_generator.sql : Python stored procedure that simulates the Fluxx
 -- "2DB" export and Salesforce extracts by writing JSON files to the
 -- internal stage. Each call = one "feed cycle".
---   CALL BP_DEMO.RAW.GEN_MOCK_FILES(n_new_grants, n_new_opps, update_pct);
+--   CALL BP_DEMO.RAW.GEN_MOCK_FILES(n_new_grants, n_new_opps, update_pct [, seed]);
 -- update_pct = share of n_new_grants emitted as status UPDATES to
 -- existing grants (same grant_id, later last_modified) -> dedup demo.
+-- seed (optional) = same seed + same starting data -> the same records every time
+--   (the notebook passes one so every rehearsal gives the same answers). Omit it for random data.
 -- =====================================================================
 USE SCHEMA BP_DEMO.RAW;
 
-CREATE OR REPLACE PROCEDURE GEN_MOCK_FILES(N_GRANTS INT, N_OPPS INT, UPDATE_PCT FLOAT)
+DROP PROCEDURE IF EXISTS GEN_MOCK_FILES(INT, INT, FLOAT);   -- old 3-argument version, replaced below
+CREATE OR REPLACE PROCEDURE GEN_MOCK_FILES(N_GRANTS INT, N_OPPS INT, UPDATE_PCT FLOAT, SEED INT DEFAULT NULL)
 RETURNS VARIANT
 LANGUAGE PYTHON
 RUNTIME_VERSION = '3.11'
@@ -245,13 +248,14 @@ def _put(session, folder, key, body):
                             auto_compress=False, overwrite=True)
     return path.split("/")[-1]
 
-def run(session, n_grants, n_opps, update_pct):
-    random.seed()
+def run(session, n_grants, n_opps, update_pct, seed=None):
+    random.seed(seed)                              # None = random; a number = repeatable
     today = dt.date.today()
-    # latest version of existing grants (so updates + opp FKs reference real ids)
+    # latest version of existing grants (so updates + opp FKs reference real ids); sorted so a seed is repeatable
     existing = [json.loads(r[0]) for r in session.sql("""
         SELECT r.value::string FROM BP_DEMO.RAW.RAW_FLUXX t, LATERAL FLATTEN(t.payload:records) r
         QUALIFY ROW_NUMBER() OVER (PARTITION BY r.value:grant_id ORDER BY r.value:last_modified::timestamp_ntz DESC) = 1
+        ORDER BY r.value:grant_id::string
         """).collect()]
     max_id = 0
     for e in existing:
@@ -275,3 +279,4 @@ def run(session, n_grants, n_opps, update_pct):
         files.append(_put(session, "sfdc", "opportunities", opps[i:i + 100]))
     return {"new_grants": len(new), "grant_updates": len(updates), "opportunities": len(opps), "files": files}
 $$;
+LIST @BP_DEMO.RAW.LANDING_STAGE;

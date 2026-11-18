@@ -12,20 +12,22 @@ USE SCHEMA BP_DEMO.RAW;
 USE WAREHOUSE BP_DEMO_WH;
 
 -- Fluxx grant applications
-CREATE OR REPLACE PIPE PIPE_FLUXX
+-- Fully qualified names: a pipe's COPY resolves names in the CALLER's session at
+-- REFRESH time, so unqualified names fail from a notebook with no current schema.
+CREATE OR REPLACE PIPE BP_DEMO.RAW.PIPE_FLUXX
   COMMENT = 'Snowpipe: Fluxx 2DB JSON exports -> RAW_FLUXX'
 AS
-COPY INTO RAW_FLUXX (payload, file_name, loaded_at)
-FROM (SELECT $1, METADATA$FILENAME, CURRENT_TIMESTAMP() FROM @LANDING_STAGE/fluxx/)
-FILE_FORMAT = (FORMAT_NAME = 'FF_JSON');
+COPY INTO BP_DEMO.RAW.RAW_FLUXX (payload, file_name, loaded_at)
+FROM (SELECT $1, METADATA$FILENAME, CURRENT_TIMESTAMP() FROM @BP_DEMO.RAW.LANDING_STAGE/fluxx/)
+FILE_FORMAT = (FORMAT_NAME = 'BP_DEMO.RAW.FF_JSON');
 
 -- Salesforce opportunities
-CREATE OR REPLACE PIPE PIPE_SFDC
+CREATE OR REPLACE PIPE BP_DEMO.RAW.PIPE_SFDC
   COMMENT = 'Snowpipe: Salesforce opportunity JSON extracts -> RAW_SFDC'
 AS
-COPY INTO RAW_SFDC (payload, file_name, loaded_at)
-FROM (SELECT $1, METADATA$FILENAME, CURRENT_TIMESTAMP() FROM @LANDING_STAGE/sfdc/)
-FILE_FORMAT = (FORMAT_NAME = 'FF_JSON');
+COPY INTO BP_DEMO.RAW.RAW_SFDC (payload, file_name, loaded_at)
+FROM (SELECT $1, METADATA$FILENAME, CURRENT_TIMESTAMP() FROM @BP_DEMO.RAW.LANDING_STAGE/sfdc/)
+FILE_FORMAT = (FORMAT_NAME = 'BP_DEMO.RAW.FF_JSON');
 
 -- Simulated continuous feed: every 3 minutes land new files, then nudge both pipes
 CREATE OR REPLACE PROCEDURE RUN_FEED_CYCLE(N_GRANTS INT, N_OPPS INT, UPDATE_PCT FLOAT)

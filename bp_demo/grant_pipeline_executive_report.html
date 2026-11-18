@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="snowflake-source" content="cortex-agent-authored" />
+<title>Grant Portfolio &amp; Opportunity Pipeline — Executive Assessment</title>
+<script type="application/json" id="snowflake-report-metadata">
+{
+  "generated": "2026-11-18",
+  "intent": "Executive assessment of grants and donor opportunities in BP_DEMO.CURATED.DT_GRANT_PIPELINE (demo data), combining business-analyst and data-science views",
+  "dataSources": [{ "type": "table", "name": "BP_DEMO.CURATED.DT_GRANT_PIPELINE" }],
+  "sections": [
+    { "id": "kpis", "title": "Portfolio at a glance",
+      "dataSources": [{ "type": "query", "sql": "SELECT COUNT(*) grants, COUNT(DISTINCT ORGANIZATION_NAME) orgs, SUM(REQUESTED_AMOUNT) requested, SUM(APPROVED_AMOUNT) approved, SUM(OPP_COUNT) opps, SUM(PIPELINE_AMOUNT) pipeline, SUM(WEIGHTED_PIPELINE_AMOUNT) weighted, SUM(COMMITTED_AMOUNT) committed, ROUND(AVG(REVIEWER_SCORE),2) avg_score, ROUND(AVG(AVG_DONOR_SENTIMENT),3) sentiment, ROUND(AVG(DATEDIFF(day, SUBMITTED_DATE, DECISION_DATE)),1) avg_days_to_decision FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE" }] },
+    { "id": "trends", "title": "Submission & approval trend",
+      "dataSources": [{ "type": "query", "sql": "SELECT YEAR(SUBMITTED_DATE)||'-Q'||QUARTER(SUBMITTED_DATE) q, COUNT(*) n, SUM(REQUESTED_AMOUNT) req, SUM(APPROVED_AMOUNT) appr, ROUND(AVG(REVIEWER_SCORE),2) score, COUNT_IF(STATUS IN ('Approved','Paid')) won, COUNT_IF(STATUS='Declined') lost, ROUND(AVG(DATEDIFF(day,SUBMITTED_DATE,DECISION_DATE)),0) days FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE GROUP BY 1 ORDER BY 1" }] },
+    { "id": "breakdowns", "title": "Portfolio breakdowns",
+      "dataSources": [{ "type": "query", "sql": "SELECT <dimension> k, COUNT(*) n, SUM(REQUESTED_AMOUNT) req, SUM(APPROVED_AMOUNT) appr, SUM(PIPELINE_AMOUNT) pipe, SUM(WEIGHTED_PIPELINE_AMOUNT) wpipe, ROUND(AVG(REVIEWER_SCORE),2) score FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE GROUP BY 1 -- dimension in STATUS, PROGRAM_AREA, REGION, RISK_RATING, AI_PRIMARY_RISK, PROGRAM_OFFICER" }],
+      "producerNotes": "One query per dimension, unioned at authoring time; values inlined in the script." },
+    { "id": "science", "title": "Data science lens",
+      "dataSources": [{ "type": "query", "sql": "SELECT FLOOR(REVIEWER_SCORE) band, COUNT(*) n, COUNT_IF(STATUS IN ('Approved','Paid')) won, COUNT_IF(STATUS='Declined') lost, ROUND(AVG(AVG_DONOR_SENTIMENT),3) sent FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE GROUP BY 1 ORDER BY 1" },
+                      { "type": "query", "sql": "SELECT CORR(REVIEWER_SCORE, IFF(STATUS IN ('Approved','Paid'),1,0)) FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE WHERE STATUS IN ('Approved','Paid','Declined')" }] },
+    { "id": "detail", "title": "Top weighted opportunities",
+      "dataSources": [{ "type": "query", "sql": "SELECT GRANT_ID, ORGANIZATION_NAME, PROGRAM_AREA, REGION, STATUS, RISK_RATING, REVIEWER_SCORE, REQUESTED_AMOUNT, PIPELINE_AMOUNT, WEIGHTED_PIPELINE_AMOUNT, AI_PRIMARY_RISK FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE ORDER BY WEIGHTED_PIPELINE_AMOUNT DESC NULLS LAST LIMIT 15" }] },
+    { "id": "insights", "title": "Insights & recommendations", "producerNotes": "Narrative derived from the queries above; re-check figures when refreshing." }
+  ]
+}
+</script>
+<style>
+  :root { color-scheme: light dark; --accent:#29b5e8; --muted: light-dark(#6b7280,#9ca3af); --line: light-dark(#e5e7eb,#374151); --card: light-dark(#f9fafb,#111827); }
+  body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; max-width: 1040px; width:100%; box-sizing:border-box; margin:0 auto; padding: clamp(16px,4vw,32px); color: light-dark(#1f2937,#e5e7eb); line-height:1.5; }
+  h1,h2,h3 { color: light-dark(#0f172a,#f1f5f9); line-height:1.25; }
+  h1 { font-size: clamp(24px,4vw,34px); margin:0 0 6px; }
+  h2 { margin-top: 44px; padding-bottom:6px; border-bottom: 2px solid var(--accent); }
+  .sub { color: var(--muted); margin:0 0 20px; }
+  .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; background: light-dark(#e0f2fe,#0c4a6e); color: light-dark(#075985,#bae6fd); margin-right:6px; }
+  img, svg { max-width:100%; height:auto; }
+  .exec { background: var(--card); border-left: 4px solid var(--accent); padding: 14px 18px; border-radius: 6px; }
+  .exec ul { margin: 6px 0 0; padding-left: 20px; }
+  .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap:12px; margin-top:16px; }
+  .kpi { background: var(--card); border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .kpi .v { font-size: 26px; font-weight: 700; }
+  .kpi .l { font-size: 13px; color: var(--muted); }
+  .kpi .d { font-size: 12px; margin-top:4px; }
+  .good { color: light-dark(#047857,#34d399); } .bad { color: light-dark(#b91c1c,#f87171); } .warn { color: light-dark(#b45309,#fbbf24); }
+  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,440px),1fr)); gap: 8px 28px; }
+  .chart-box { position:relative; width:100%; height:100%; }
+  .chart-box > canvas { width:100% !important; height:100% !important; }
+  .table-wrap { overflow-x:auto; margin:16px 0; }
+  table { border-collapse: collapse; width:100%; font-size: 13px; }
+  th, td { border:1px solid var(--line); padding:6px 9px; text-align:left; white-space: nowrap; }
+  th { background: light-dark(#f3f4f6,#1f2937); font-weight:600; }
+  td.n { text-align:right; font-variant-numeric: tabular-nums; }
+  .pill { padding:1px 7px; border-radius:999px; font-size:12px; }
+  .r-High { background: light-dark(#fee2e2,#7f1d1d); } .r-Medium { background: light-dark(#fef3c7,#78350f); } .r-Low { background: light-dark(#d1fae5,#064e3b); }
+  .rec { display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,300px),1fr)); gap:14px; }
+  .rec div { border:1px solid var(--line); border-radius:8px; padding:14px; background: var(--card); }
+  .rec h3 { margin:0 0 6px; font-size:16px; }
+  .role { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color: var(--accent); font-weight:700; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 40px; }
+  /* chart details menu */
+  .chart-card { position:relative; margin:28px 0 8px; border-top:1px solid var(--line); }
+  .chart-card h3 { font-size:15px; margin:12px 0 0; }
+  .chart-card-tools { position:absolute; top:-13px; right:12px; z-index:2; display:flex; gap:2px; align-items:center; height:26px; padding:0 6px; border:1px solid transparent; border-radius:999px; background: Canvas; box-shadow:0 1px 4px rgba(0,0,0,.1); opacity:0; pointer-events:none; transition: opacity .15s, border-color .15s; }
+  .chart-card:hover .chart-card-tools, .chart-card:focus-within .chart-card-tools { opacity:1; pointer-events:auto; border-color: light-dark(#d1d5db,#374151); }
+  @media (hover:none) { .chart-card-tools { opacity:1; pointer-events:auto; border-color: light-dark(#d1d5db,#374151); } }
+  .chart-card-tools button { padding:4px 9px; border:0; border-bottom:2px solid transparent; background:none; color: var(--muted); font:inherit; font-size:12px; font-weight:500; line-height:14px; cursor:pointer; white-space:nowrap; }
+  .chart-card-tools button:hover, .chart-card-tools button.active { color: CanvasText; }
+  .chart-card-tools button.active { border-bottom-color: var(--accent); }
+  .chart-card-tools button:focus-visible, .cc-copy:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .cc-panel { display:none; height:320px; overflow:auto; padding-top:10px; box-sizing:border-box; }
+  .cc-panel.active { display:block; }
+  .cc-panel pre { margin:0; padding:16px; border:1px solid var(--line); border-radius:5px; background: var(--card); font:12px/1.6 ui-monospace, Menlo, monospace; overflow:auto; white-space: pre-wrap; }
+  .cc-sql { position:relative; }
+  .cc-copy { position:absolute; top:8px; right:8px; padding:3px 10px; border:1px solid var(--line); border-radius:4px; background: Canvas; color:inherit; font:inherit; font-size:13px; cursor:pointer; }
+  .cc-info p { margin:0 0 9px; font-size:14px; }
+  .cc-status { min-height:18px; margin:6px 0 0; font-size:12px; color: var(--muted); }
+  @media (max-width:500px) { .chart-card-tools { right:0; gap:0; padding:0 2px; } .chart-card-tools button { padding:4px 6px; font-size:11px; } }
+</style>
+</head>
+<body>
+
+<span class="badge">Executive briefing</span><span class="badge">Demo data</span>
+<h1>Grant Portfolio &amp; Opportunity Pipeline</h1>
+<p class="sub">State of grants and donor opportunities · Source: BP_DEMO.CURATED.DT_GRANT_PIPELINE · Submissions May 2024 – Nov 2026 · Prepared 18 Nov 2026 by Business Analysis &amp; Data Science</p>
+
+<div class="exec">
+  <strong>Bottom line.</strong> The portfolio is healthy and well governed: <strong>$152.2M approved</strong> across 359 approved/paid grants, a <strong>73.7% win rate</strong> on decided applications, and reviewer scores that strongly predict outcomes. The near-term issues are a <strong>2026 decision backlog</strong> ($66.5M under review or submitted) and <strong>$12.5M of weighted donor pipeline attached to declined grants</strong>. These are the most actionable items in this report.
+  <ul>
+    <li>Donor pipeline: <strong>$88.7M</strong> open, <strong>$46.3M</strong> probability-weighted, <strong>$30.6M</strong> already committed.</li>
+    <li><strong>Execution capacity</strong> is the dominant AI-flagged risk (41% of grants) and is linked to the lowest reviewer scores.</li>
+    <li>North America makes up 42% of grants and 48% of approved dollars, so the portfolio is geographically concentrated.</li>
+  </ul>
+</div>
+
+<h2 id="kpis">Portfolio at a glance</h2>
+<div class="kpis">
+  <div class="kpi"><div class="v">653</div><div class="l">Grant applications</div><div class="d">52 organizations · 5 program areas</div></div>
+  <div class="kpi"><div class="v">$292.5M</div><div class="l">Total requested</div><div class="d">Avg $448K per application</div></div>
+  <div class="kpi"><div class="v good">$152.2M</div><div class="l">Total approved</div><div class="d">91.9% of request on approved grants</div></div>
+  <div class="kpi"><div class="v good">73.7%</div><div class="l">Win rate (decided)</div><div class="d">359 won · 128 declined</div></div>
+  <div class="kpi"><div class="v">$88.7M</div><div class="l">Open donor pipeline</div><div class="d">390 opportunities</div></div>
+  <div class="kpi"><div class="v">$46.3M</div><div class="l">Weighted pipeline</div><div class="d">52% avg. probability</div></div>
+  <div class="kpi"><div class="v">$30.6M</div><div class="l">Committed</div><div class="d">35% of open pipeline</div></div>
+  <div class="kpi"><div class="v warn">81 days</div><div class="l">Avg time to decision</div><div class="d">Avg reviewer score 3.00 / 5</div></div>
+</div>
+
+<h2 id="trends">Submission &amp; approval trend</h2>
+<p>Volume held at roughly 60–80 applications per quarter from late 2024 onward. Approved dollars fall sharply from 2026‑Q2. This drop reflects grants <em>still in review</em> rather than weaker demand, because requested dollars stay flat at about $31M per quarter.</p>
+<div id="card-trend"></div>
+<div id="card-cycle"></div>
+
+<h2 id="breakdowns">Portfolio breakdowns</h2>
+<div class="grid2">
+  <div id="card-status"></div>
+  <div id="card-risk"></div>
+  <div id="card-program"></div>
+  <div id="card-region"></div>
+  <div id="card-airisk"></div>
+  <div id="card-officer"></div>
+</div>
+
+<h2 id="science">Data science lens</h2>
+<p>Statistical checks on how the review process behaves. Reviewer score correlates strongly with the funding outcome (<strong>r = 0.69</strong>, point-biserial, decided grants only). Donor sentiment shows <strong>no relationship</strong> with grant quality (<strong>r = 0.01</strong>), so it should not be used as a quality proxy.</p>
+<div id="card-band"></div>
+<div class="kpis">
+  <div class="kpi"><div class="v">0.69</div><div class="l">Corr(score, won)</div><div class="d good">Strong, consistent signal</div></div>
+  <div class="kpi"><div class="v">0.01</div><div class="l">Corr(score, donor sentiment)</div><div class="d">Independent dimensions</div></div>
+  <div class="kpi"><div class="v">97%</div><div class="l">Win rate, score ≥ 3</div><div class="d">260 won / 268 decided</div></div>
+  <div class="kpi"><div class="v bad">6</div><div class="l">High-risk grants approved</div><div class="d">Only $2.4M of 206 high-risk</div></div>
+</div>
+
+<h2 id="detail">Top weighted opportunities</h2>
+<p>These are the 15 grants with the largest probability-weighted donor pipeline. Rows marked <span class="pill r-High">Declined</span> or high risk need attention to reconcile the related opportunities.</p>
+<div class="table-wrap"><table id="detail-table">
+  <thead><tr><th>Grant</th><th>Organization</th><th>Program</th><th>Region</th><th>Status</th><th>Risk</th><th>Score</th><th>Requested</th><th>Pipeline</th><th>Weighted</th><th>AI primary risk</th></tr></thead>
+  <tbody></tbody>
+</table></div>
+
+<h2 id="insights">Insights &amp; recommendations</h2>
+<div class="rec">
+  <div><span class="role">Business analyst</span><h3>1. Clear the 2026 review backlog</h3>The 163 grants that are Under Review or Submitted represent <strong>$66.5M requested</strong>. 2026‑Q2 cycle time rose to 114 days, against 81 days on average. Fast-track applications scoring ≥ 3.0, since 97% of them are funded anyway.</div>
+  <div><span class="role">Business analyst</span><h3>2. Reconcile pipeline on declined grants</h3>66 declined grants still carry open donor opportunities worth <strong>$12.5M weighted</strong>. The largest is Clean Grid Futures at $3.9M. Close these out or redirect them to an aligned grant, so that pipeline forecasts are not overstated.</div>
+  <div><span class="role">Business analyst</span><h3>3. Diversify geography</h3>North America receives 48% of approved dollars. East Asia &amp; Pacific has the highest average score (3.09) but the lowest approval yield ($9.0M of $27.5M). This points to an opportunity to grow in that region.</div>
+  <div><span class="role">Data scientist</span><h3>4. Invest in grantee execution capacity</h3>Execution capacity is the primary AI-identified risk on 268 grants (41%), and these grants score lowest (avg 2.65). A capacity-building track could convert some of these marginal proposals into wins.</div>
+  <div><span class="role">Data scientist</span><h3>5. Formalize a score-based triage model</h3>Score is a strong, stable predictor (r = 0.69). Grants scoring below 2 win only 6% of the time. A simple threshold model could route these low-scoring applications to referral early and save reviewer effort.</div>
+  <div><span class="role">Data scientist</span><h3>6. Don't use donor sentiment as a quality proxy</h3>Sentiment is unrelated to reviewer quality (r = 0.01) and averages a modest 0.34. Track it as a separate relationship-health KPI, and look into why the 5-band grants have neutral sentiment.</div>
+</div>
+
+<p class="foot">Note: this report runs on demonstration data. Figures are a point-in-time snapshot of BP_DEMO.CURATED.DT_GRANT_PIPELINE (last modified 16 Nov 2026). "Won" = Approved or Paid. Win rate excludes grants that are not yet decided. Hover any chart to see its SQL, source rows and definitions.</p>
+
+<script src="/libs/chart.js@4.4.4/chart.umd.js"></script>
+<script>
+(function () {
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  Chart.defaults.color = dark ? '#cbd5e1' : '#374151';
+  Chart.defaults.borderColor = dark ? 'rgba(148,163,184,.2)' : 'rgba(0,0,0,.08)';
+  Chart.defaults.font.family = '-apple-system, system-ui, "Segoe UI", sans-serif';
+  const C = ['#29b5e8','#11567f','#7d44cf','#ff9f36','#d45b90','#5fbf8f','#8a99ad'];
+  const M = v => '$' + (v/1e6).toFixed(1) + 'M';
+  const T = 'BP_DEMO.CURATED.DT_GRANT_PIPELINE';
+  const dimSql = d => `SELECT ${d}, COUNT(*) n, SUM(REQUESTED_AMOUNT) req,\n       SUM(APPROVED_AMOUNT) appr, SUM(PIPELINE_AMOUNT) pipe,\n       SUM(WEIGHTED_PIPELINE_AMOUNT) wpipe, ROUND(AVG(REVIEWER_SCORE),2) score\nFROM ${T}\nGROUP BY 1 ORDER BY n DESC`;
+
+  const trend = [
+    ['2024-Q2',21,7.869,6.853,16,4,74,3.24],['2024-Q3',48,18.216,12.536,35,12,93,3.13],['2024-Q4',74,30.836,18.478,50,13,75,2.96],
+    ['2025-Q1',71,36.123,24.686,47,16,85,2.97],['2025-Q2',79,31.080,20.601,55,16,83,2.90],['2025-Q3',64,30.270,19.076,47,13,72,3.28],
+    ['2025-Q4',58,26.044,17.105,37,16,74,2.84],['2026-Q1',69,35.007,18.993,39,16,79,2.94],['2026-Q2',70,31.124,7.456,18,9,114,3.17],
+    ['2026-Q3',68,31.368,4.511,13,10,69,2.70],['2026-Q4',31,14.568,1.942,2,3,76,3.13]];
+  const status = [['Paid',213,98.804,92.106,12.744,3.59],['Approved',146,66.854,60.131,8.864,3.64],['Under Review',128,56.391,0,10.584,2.45],['Declined',128,58.666,0,12.504,1.81],['Submitted',35,10.100,0,1.407,3.03],['Draft',3,1.690,0,0.176,2.73]];
+  const risk = [['Low',241,112.299,81.190,4.31],['Medium',206,97.441,68.638,2.85],['High',206,82.765,2.409,1.61]];
+  const program = [['Public Health',199,90.324,47.978,14.867,2.97],['Environment',151,82.382,47.231,12.549,3.11],['Education',105,43.960,21.877,7.844,2.93],['Government Innovation',112,38.827,18.777,5.745,3.01],['Arts',86,37.012,16.374,5.274,2.91]];
+  const region = [['North America',272,127.919,73.629,23.387,2.98],['Africa',86,41.030,22.386,4.400,3.00],['Europe',82,35.210,20.412,4.764,2.91],['South Asia',86,36.444,14.462,6.242,3.02],['Latin America',69,24.429,12.327,2.710,3.04],['East Asia & Pacific',58,27.473,9.021,4.775,3.09]];
+  const airisk = [['Execution capacity',268,2.65,20.133],['Outcome measurement',115,3.53,7.812],['Political or regulatory risk',97,3.26,7.227],['Financial capacity',96,3.05,7.363],['Program overlap',46,3.16,2.262],['Budget concerns',31,2.77,1.483]];
+  const officer = [['Sofia Marquez',58,7.187],['Raj Patel',70,6.184],['Karen Hale',58,4.654],['Leah Goldberg',63,4.460],['Dr. Amara Okafor',71,4.029],['Jason Andrews',39,3.756],['Henry Walsh',42,3.384],['Daniel Cho',38,2.989],['Elena Rossi',44,2.804],['Katie Lowe',42,2.470],['Andrea Wells',55,2.373],['Marcus Bell',45,1.401],['Priya Nair',28,0.587]];
+  const band = [['1.x',155,5,82,0.335],['2.x',171,94,38,0.337],['3.x',146,117,3,0.349],['4.x',172,136,4,0.363],['5.0',9,7,1,-0.009]];
+  const detail = [
+    ['FLX-2026-00186','Clean Grid Futures','Environment','North America','Declined','Medium',2.7,4361000,6194000,3892250,'Outcome measurement'],
+    ['FLX-2026-00211','Municipal Leadership Academy','Government Innovation','South Asia','Under Review','High',1.5,2305000,3594000,2345200,'Execution capacity'],
+    ['FLX-2026-00114','Renewable Access Africa','Environment','East Asia & Pacific','Declined','Low',3.5,2052000,1947000,1382450,'Financial capacity'],
+    ['FLX-2026-00102','Andean Public Health Institute','Public Health','Europe','Paid','Low',4.5,1730000,1258000,1258000,'Political or regulatory risk'],
+    ['FLX-2026-00068','European Clean Power Alliance','Environment','North America','Approved','Low',4.6,3541000,1767000,1148550,'Financial capacity'],
+    ['FLX-2026-00404','STEM Pathways Baltimore','Education','East Asia & Pacific','Under Review','Low',4.0,2108000,1099000,1099000,'Financial capacity'],
+    ['FLX-2026-00505','Readers Rising Foundation','Education','North America','Under Review','Medium',2.3,2433000,2357000,1020050,'Execution capacity'],
+    ['FLX-2026-00050','Johns Hopkins Center for Injury Research','Public Health','Latin America','Declined','Medium',2.3,1575000,1754000,970100,'Execution capacity'],
+    ['FLX-2026-00436','Allied Health Career High Schools','Education','North America','Paid','Low',4.7,721000,1344000,717750,'Execution capacity'],
+    ['FLX-2026-00261','Global Tobacco Policy Alliance','Public Health','Europe','Approved','Low',4.7,681000,708000,708000,'Political or regulatory risk'],
+    ['FLX-2026-00608','Renewable Access Africa','Environment','North America','Paid','Medium',2.8,887000,619000,619000,'Execution capacity'],
+    ['FLX-2026-00179','Recovery Pathways Collaborative','Public Health','Africa','Paid','Medium',3.0,2477000,1368000,615600,'Execution capacity'],
+    ['FLX-2026-00629','Global Tobacco Policy Alliance','Public Health','Africa','Paid','Low',4.2,353000,674000,555200,'Outcome measurement'],
+    ['FLX-2026-00204','Gulf Coast Environmental Justice Fund','Environment','North America','Approved','Low',3.9,688000,532000,532000,'Political or regulatory risk'],
+    ['FLX-2026-00377','Dance Across Boroughs','Arts','North America','Approved','Medium',2.9,762000,586000,527400,'Execution capacity']];
+
+  // Build a chart card with Chart / SQL / Preview / Info views.
+  function card(id, o) {
+    const host = document.getElementById(id);
+    const el = (t, cls, txt) => { const e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+    const wrap = el('div', 'chart-card');
+    const tools = el('div', 'chart-card-tools'); tools.setAttribute('role','group'); tools.setAttribute('aria-label','Chart views');
+    ['chart','sql','preview','info'].forEach((v, i) => { const b = el('button', i ? '' : 'active', v === 'sql' ? 'SQL' : v[0].toUpperCase() + v.slice(1)); b.type = 'button'; b.dataset.view = v; b.setAttribute('aria-pressed', String(!i)); tools.appendChild(b); });
+    wrap.appendChild(tools);
+    wrap.appendChild(el('h3', '', o.title));
+    const h = (o.height || 300) + 'px';
+    const pc = el('div', 'cc-panel active'); pc.dataset.panel = 'chart'; pc.style.height = h;
+    const box = el('div', 'chart-box'); const cv = document.createElement('canvas'); box.appendChild(cv); pc.appendChild(box);
+    const ps = el('div', 'cc-panel'); ps.dataset.panel = 'sql'; ps.style.height = h;
+    const sq = el('div', 'cc-sql'); const cp = el('button', 'cc-copy', 'Copy'); cp.type = 'button';
+    const pre = el('pre'); const code = el('code', '', o.sql); pre.appendChild(code); sq.appendChild(cp); sq.appendChild(pre); ps.appendChild(sq);
+    const pp = el('div', 'cc-panel'); pp.dataset.panel = 'preview'; pp.style.height = h;
+    const tw = el('div', 'table-wrap'); const tb = el('table'); const thr = el('tr');
+    o.cols.forEach(c => thr.appendChild(el('th', '', c))); const th = el('thead'); th.appendChild(thr); tb.appendChild(th);
+    const tbody = el('tbody'); o.rows.forEach(r => { const tr = el('tr'); r.forEach(c => tr.appendChild(el('td', typeof c === 'number' ? 'n' : '', String(c)))); tbody.appendChild(tr); });
+    tb.appendChild(tbody); tw.appendChild(tb); pp.appendChild(tw);
+    const pi = el('div', 'cc-panel cc-info'); pi.dataset.panel = 'info'; pi.style.height = h;
+    o.info.forEach(([k, v]) => { const p = el('p'); p.appendChild(el('strong', '', k + ': ')); p.appendChild(document.createTextNode(v)); pi.appendChild(p); });
+    const st = el('p', 'cc-status'); st.setAttribute('role','status'); st.setAttribute('aria-live','polite');
+    [pc, ps, pp, pi, st].forEach(x => wrap.appendChild(x));
+    host.appendChild(wrap);
+    const btns = tools.querySelectorAll('button');
+    btns.forEach(b => b.addEventListener('click', () => {
+      btns.forEach(x => { x.classList.toggle('active', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+      wrap.querySelectorAll('.cc-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === b.dataset.view));
+      st.textContent = '';
+    }));
+    cp.addEventListener('click', () => {
+      const declined = () => { st.textContent = 'SQL was not copied. Select it and copy it manually.'; };
+      st.textContent = 'Confirm the copy in the dialog…';
+      try { navigator.clipboard.writeText(o.sql).then(() => { st.textContent = 'SQL copied.'; }, declined); } catch (e) { declined(); }
+    });
+    o.config.options = Object.assign({ responsive: true, maintainAspectRatio: false }, o.config.options || {});
+    new Chart(cv, o.config);
+  }
+  const mAxis = { ticks: { callback: v => '$' + v + 'M' } };
+  const tipM = { callbacks: { label: c => c.dataset.label + ': $' + c.parsed[c.chart.options.indexAxis === 'y' ? 'x' : 'y'].toFixed(1) + 'M' } };
+
+  card('card-trend', { title: 'Requested vs approved dollars, and grants won, by submission quarter', height: 340,
+    sql: `SELECT YEAR(SUBMITTED_DATE)||'-Q'||QUARTER(SUBMITTED_DATE) q, COUNT(*) n,\n       SUM(REQUESTED_AMOUNT) req, SUM(APPROVED_AMOUNT) appr,\n       ROUND(AVG(REVIEWER_SCORE),2) score,\n       COUNT_IF(STATUS IN ('Approved','Paid')) won, COUNT_IF(STATUS='Declined') lost,\n       ROUND(AVG(DATEDIFF(day,SUBMITTED_DATE,DECISION_DATE)),0) days\nFROM ${T}\nGROUP BY 1 ORDER BY 1`,
+    cols: ['Quarter','Grants','Requested $M','Approved $M','Won','Declined','Avg days','Avg score'], rows: trend,
+    info: [['What this shows','Dollars requested and approved per submission quarter (bars), with the count of grants won (line).'],['Source', T],['Definition','Won = STATUS in Approved or Paid. Quarter is based on SUBMITTED_DATE.'],['Caveat','Recent quarters look low on approvals because many grants are still under review. 2026‑Q4 covers only part of the quarter.']],
+    config: { data: { labels: trend.map(r => r[0]), datasets: [
+      { type: 'bar', label: 'Requested', data: trend.map(r => r[2]), backgroundColor: C[1], yAxisID: 'y' },
+      { type: 'bar', label: 'Approved', data: trend.map(r => r[3]), backgroundColor: C[0], yAxisID: 'y' },
+      { type: 'line', label: 'Grants won', data: trend.map(r => r[4]), borderColor: C[3], backgroundColor: C[3], tension: .3, yAxisID: 'y1' }]},
+      options: { interaction: { mode: 'index', intersect: false }, scales: { y: Object.assign({ title: { display: true, text: 'USD (M)' } }, mAxis), y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Grants won' } } } } } });
+
+  card('card-cycle', { title: 'Average days from submission to decision', height: 240,
+    sql: `SELECT YEAR(SUBMITTED_DATE)||'-Q'||QUARTER(SUBMITTED_DATE) q,\n       ROUND(AVG(DATEDIFF(day,SUBMITTED_DATE,DECISION_DATE)),0) days\nFROM ${T}\nGROUP BY 1 ORDER BY 1`,
+    cols: ['Quarter','Avg days to decision'], rows: trend.map(r => [r[0], r[6]]),
+    info: [['What this shows','Mean decision cycle time by submission quarter, for grants that have a DECISION_DATE.'],['Source', T],['Insight','The 2026‑Q2 spike to 114 days is the clearest operational bottleneck in the data.']],
+    config: { type: 'line', data: { labels: trend.map(r => r[0]), datasets: [{ label: 'Days', data: trend.map(r => r[6]), borderColor: C[2], backgroundColor: 'rgba(125,68,207,.15)', fill: true, tension: .3 }] }, options: { plugins: { legend: { display: false } } } } });
+
+  card('card-status', { title: 'Grant status mix (count)',
+    sql: dimSql('STATUS'), cols: ['Status','Grants','Requested $M','Approved $M','Weighted pipe $M','Avg score'], rows: status,
+    info: [['What this shows','Number of grants by current lifecycle status.'],['Source', T],['Insight','55% of grants are approved or paid. 25% are still awaiting a decision (Submitted, Under Review or Draft).']],
+    config: { type: 'doughnut', data: { labels: status.map(r => r[0]), datasets: [{ data: status.map(r => r[1]), backgroundColor: [C[0], C[5], C[3], C[4], C[2], C[6]] }] }, options: { plugins: { legend: { position: 'right' } } } } });
+
+  card('card-risk', { title: 'Requested vs approved by risk rating',
+    sql: dimSql('RISK_RATING'), cols: ['Risk','Grants','Requested $M','Approved $M','Avg score'], rows: risk,
+    info: [['What this shows','Dollars requested and approved for each reviewer-assigned risk rating.'],['Source', T],['Insight','Only 2.9% of high-risk requested dollars were approved, which shows the risk framework is being enforced.']],
+    config: { type: 'bar', data: { labels: risk.map(r => r[0]), datasets: [{ label: 'Requested', data: risk.map(r => r[2]), backgroundColor: C[1] }, { label: 'Approved', data: risk.map(r => r[3]), backgroundColor: C[0] }] }, options: { scales: { y: mAxis }, plugins: { tooltip: tipM } } } });
+
+  card('card-program', { title: 'Approved dollars and weighted pipeline by program area',
+    sql: dimSql('PROGRAM_AREA'), cols: ['Program','Grants','Requested $M','Approved $M','Weighted pipe $M','Avg score'], rows: program,
+    info: [['What this shows','Approved grant dollars, plus probability-weighted donor pipeline, for each program area.'],['Source', T],['Insight','Public Health and Environment together account for 63% of approved dollars.']],
+    config: { type: 'bar', data: { labels: program.map(r => r[0]), datasets: [{ label: 'Approved', data: program.map(r => r[3]), backgroundColor: C[0] }, { label: 'Weighted pipeline', data: program.map(r => r[4]), backgroundColor: C[3] }] }, options: { indexAxis: 'y', scales: { x: mAxis }, plugins: { tooltip: tipM } } } });
+
+  card('card-region', { title: 'Approval yield by region (approved ÷ requested)',
+    sql: dimSql('REGION'), cols: ['Region','Grants','Requested $M','Approved $M','Weighted pipe $M','Avg score'], rows: region,
+    info: [['What this shows','Share of requested dollars that were approved in each region, across all statuses.'],['Source', T],['Caveat','Yield includes undecided grants, so regions with recent submissions look lower.']],
+    config: { type: 'bar', data: { labels: region.map(r => r[0]), datasets: [{ label: 'Yield %', data: region.map(r => +(r[3] / r[2] * 100).toFixed(1)), backgroundColor: region.map((r, i) => C[i]) }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { max: 70, ticks: { callback: v => v + '%' } } } } } });
+
+  card('card-airisk', { title: 'AI-identified primary risk: grant count vs avg reviewer score',
+    sql: dimSql('AI_PRIMARY_RISK'), cols: ['AI primary risk','Grants','Avg score','Weighted pipe $M'], rows: airisk,
+    info: [['What this shows','Number of grants by the primary risk that AI extracted from reviewer notes (bars), with the average reviewer score (line).'],['Source', T + ' (AI_PRIMARY_RISK column)'],['Insight','Grants flagged for execution capacity are the most common and score lowest.']],
+    config: { data: { labels: airisk.map(r => r[0]), datasets: [{ type: 'bar', label: 'Grants', data: airisk.map(r => r[1]), backgroundColor: C[2], yAxisID: 'y' }, { type: 'line', label: 'Avg score', data: airisk.map(r => r[2]), borderColor: C[3], backgroundColor: C[3], yAxisID: 'y1' }] }, options: { scales: { y1: { position: 'right', min: 2, max: 4, grid: { drawOnChartArea: false } } } } } });
+
+  card('card-officer', { title: 'Weighted donor pipeline by program officer',
+    sql: dimSql('PROGRAM_OFFICER'), cols: ['Officer','Grants','Weighted pipe $M'], rows: officer,
+    info: [['What this shows','Sum of WEIGHTED_PIPELINE_AMOUNT across each officer\'s grants.'],['Source', T],['Insight','The top two officers hold 29% of the weighted pipeline, which creates key-person risk.']],
+    config: { type: 'bar', data: { labels: officer.map(r => r[0]), datasets: [{ label: 'Weighted pipeline', data: officer.map(r => r[2]), backgroundColor: C[0] }] }, options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: tipM }, scales: { x: mAxis } } } });
+
+  card('card-band', { title: 'Outcome by reviewer score band (decided grants)', height: 300,
+    sql: `SELECT FLOOR(REVIEWER_SCORE) band, COUNT(*) n,\n       COUNT_IF(STATUS IN ('Approved','Paid')) won,\n       COUNT_IF(STATUS='Declined') lost,\n       ROUND(AVG(AVG_DONOR_SENTIMENT),3) sent\nFROM ${T}\nGROUP BY 1 ORDER BY 1`,
+    cols: ['Score band','All grants','Won','Declined','Avg donor sentiment'], rows: band,
+    info: [['What this shows','Number of grants won vs declined in each reviewer-score band.'],['Source', T],['Statistic','Point-biserial correlation of score with won = 0.687 (Approved, Paid and Declined grants only).'],['Insight','Below a score of 2, the win rate is 6%. At 3 or above, it is 97%.']],
+    config: { type: 'bar', data: { labels: band.map(r => r[0]), datasets: [{ label: 'Won', data: band.map(r => r[2]), backgroundColor: C[5] }, { label: 'Declined', data: band.map(r => r[3]), backgroundColor: C[4] }] }, options: { scales: { x: { stacked: true, title: { display: true, text: 'Reviewer score' } }, y: { stacked: true } } } } });
+
+  const tb = document.querySelector('#detail-table tbody');
+  const usd = v => '$' + Math.round(v).toLocaleString('en-US');
+  detail.forEach(r => {
+    const tr = document.createElement('tr');
+    r.forEach((v, i) => {
+      const td = document.createElement('td');
+      if (i === 5) { const s = document.createElement('span'); s.className = 'pill r-' + v; s.textContent = v; td.appendChild(s); }
+      else if (i === 4 && v === 'Declined') { const s = document.createElement('span'); s.className = 'pill r-High'; s.textContent = v; td.appendChild(s); }
+      else { td.textContent = i >= 7 && i <= 9 ? usd(v) : String(v); if (i >= 6 && i <= 9) td.className = 'n'; }
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>

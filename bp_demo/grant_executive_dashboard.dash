@@ -1,0 +1,4065 @@
+{
+  "version": 2,
+  "title": "Grant Portfolio & Donor Pipeline — Executive Dashboard",
+  "filters": {
+    "PROGRAM_AREA": {
+      "label": "Program area",
+      "mode": "multi_select",
+      "valueType": "STRING",
+      "options": {
+        "source": "static",
+        "values": [
+          "Arts",
+          "Education",
+          "Environment",
+          "Government Innovation",
+          "Public Health"
+        ]
+      },
+      "default_values": []
+    },
+    "REGION": {
+      "label": "Region",
+      "mode": "multi_select",
+      "valueType": "STRING",
+      "options": {
+        "source": "static",
+        "values": [
+          "Africa",
+          "East Asia & Pacific",
+          "Europe",
+          "Latin America",
+          "North America",
+          "South Asia"
+        ]
+      },
+      "default_values": []
+    },
+    "STATUS": {
+      "label": "Status",
+      "mode": "multi_select",
+      "valueType": "STRING",
+      "options": {
+        "source": "static",
+        "values": [
+          "Approved",
+          "Declined",
+          "Draft",
+          "Paid",
+          "Submitted",
+          "Under Review"
+        ]
+      },
+      "default_values": []
+    },
+    "RISK_RATING": {
+      "label": "Risk rating",
+      "mode": "multi_select",
+      "valueType": "STRING",
+      "options": {
+        "source": "static",
+        "values": [
+          "High",
+          "Low",
+          "Medium"
+        ]
+      },
+      "default_values": []
+    },
+    "PROGRAM_OFFICER": {
+      "label": "Program officer",
+      "mode": "multi_select",
+      "valueType": "STRING",
+      "options": {
+        "source": "query",
+        "datasources": [
+          "ds-PROGRAM_OFFICER-options"
+        ]
+      },
+      "default_values": []
+    },
+    "SUBMITTED_DATE": {
+      "label": "Submitted date",
+      "mode": "range",
+      "valueType": "DATE",
+      "default_values": []
+    }
+  },
+  "variables": {
+    "metric": {
+      "label": "Breakdown metric",
+      "valueType": "FIELD",
+      "default_values": [
+        "APPROVED_AMOUNT"
+      ],
+      "options": {
+        "source": "static",
+        "values": [
+          "APPROVED_AMOUNT",
+          "REQUESTED_AMOUNT",
+          "WEIGHTED_PIPELINE_AMOUNT",
+          "COMMITTED_AMOUNT"
+        ]
+      },
+      "mode": "single_select"
+    },
+    "top_n": {
+      "label": "Top N grants",
+      "valueType": "NUMBER",
+      "default_values": [
+        25
+      ],
+      "options": {
+        "source": "static",
+        "values": [
+          "5",
+          "100",
+          "5"
+        ]
+      },
+      "mode": "slider"
+    },
+    "donor_top_n": {
+      "label": "Top N donors",
+      "valueType": "NUMBER",
+      "default_values": [
+        10
+      ],
+      "options": {
+        "source": "static",
+        "values": [
+          "5",
+          "30",
+          "5"
+        ]
+      },
+      "mode": "slider"
+    }
+  },
+  "hierarchies": {
+    "program": {
+      "label": "Program",
+      "levels": [
+        {
+          "id": "program_area",
+          "label": "Program area",
+          "key": {
+            "expr": "PROGRAM_AREA",
+            "type": "STRING"
+          },
+          "display": "PROGRAM_AREA",
+          "group_by": [
+            "PROGRAM_AREA"
+          ]
+        },
+        {
+          "id": "initiative",
+          "label": "Initiative",
+          "key": {
+            "expr": "INITIATIVE_KEY",
+            "type": "STRING"
+          },
+          "display": "INITIATIVE",
+          "group_by": [
+            "INITIATIVE_KEY",
+            "INITIATIVE"
+          ]
+        }
+      ]
+    },
+    "geo": {
+      "label": "Geography",
+      "levels": [
+        {
+          "id": "region",
+          "label": "Region",
+          "key": {
+            "expr": "REGION",
+            "type": "STRING"
+          },
+          "display": "REGION",
+          "group_by": [
+            "REGION"
+          ]
+        },
+        {
+          "id": "country",
+          "label": "Country",
+          "key": {
+            "expr": "COUNTRY_KEY",
+            "type": "STRING"
+          },
+          "display": "COUNTRY",
+          "group_by": [
+            "COUNTRY_KEY",
+            "COUNTRY"
+          ]
+        }
+      ]
+    },
+    "budget": {
+      "label": "Budget",
+      "levels": [
+        {
+          "id": "program_area",
+          "label": "Program area",
+          "key": {
+            "expr": "PROGRAM_AREA",
+            "type": "STRING"
+          },
+          "display": "PROGRAM_AREA",
+          "group_by": [
+            "PROGRAM_AREA"
+          ]
+        },
+        {
+          "id": "grant",
+          "label": "Grant",
+          "key": {
+            "expr": "GRANT_ID",
+            "type": "STRING"
+          },
+          "display": "GRANT_LABEL",
+          "group_by": [
+            "GRANT_ID",
+            "GRANT_LABEL"
+          ]
+        },
+        {
+          "id": "line",
+          "label": "Budget line",
+          "key": {
+            "expr": "LINE_KEY",
+            "type": "STRING"
+          },
+          "display": "BUDGET_LINE",
+          "group_by": [
+            "LINE_KEY",
+            "BUDGET_LINE"
+          ]
+        }
+      ]
+    }
+  },
+  "scopes": {
+    "quarter_hover": {},
+    "program_drill": {},
+    "status_highlight": {}
+  },
+  "datasources": {
+    "ds-kpi-trend": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "QTR",
+          "type": "DATE"
+        },
+        {
+          "name": "Q_GRANTS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "Q_REQ",
+          "type": "NUMBER"
+        },
+        {
+          "name": "Q_APPR",
+          "type": "NUMBER"
+        },
+        {
+          "name": "Q_PIPE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "Q_WPIPE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "PIPELINE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "WEIGHTED",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "WITH g AS (\n    SELECT *\n    FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\n    WHERE\n        {{ filter('PROGRAM_AREA') }}\n        AND {{ filter('REGION') }}\n        AND {{ filter('STATUS') }}\n        AND {{ filter('RISK_RATING') }}\n        AND {{ filter('PROGRAM_OFFICER') }}\n        AND {{ filter('SUBMITTED_DATE') }}\n),\nq AS (\n    SELECT\n        DATE_TRUNC('QUARTER', SUBMITTED_DATE)::DATE AS QTR,\n        COUNT(*) AS Q_GRANTS,\n        SUM(REQUESTED_AMOUNT) AS Q_REQ,\n        SUM(COALESCE(APPROVED_AMOUNT, 0)) AS Q_APPR,\n        SUM(PIPELINE_AMOUNT) AS Q_PIPE,\n        SUM(WEIGHTED_PIPELINE_AMOUNT) AS Q_WPIPE\n    FROM g\n    GROUP BY\n        1\n)\nSELECT\n    QTR,\n    Q_GRANTS,\n    Q_REQ,\n    Q_APPR,\n    Q_PIPE,\n    Q_WPIPE,\n    SUM(Q_GRANTS) OVER () AS GRANTS,\n    SUM(Q_REQ) OVER () AS REQUESTED,\n    SUM(Q_APPR) OVER () AS APPROVED,\n    SUM(Q_PIPE) OVER () AS PIPELINE,\n    SUM(Q_WPIPE) OVER () AS WEIGHTED\nFROM q\nORDER BY\n    QTR",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-kpi-totals": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "ORGS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "WIN_RATE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "COMMITTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AVG_SCORE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AVG_DAYS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    COUNT(DISTINCT ORGANIZATION_NAME) AS ORGS,\n    COUNT_IF(STATUS IN ('Approved', 'Paid')) / NULLIF(COUNT_IF(STATUS IN ('Approved', 'Paid', 'Declined')), 0) AS WIN_RATE,\n    SUM(COMMITTED_AMOUNT) AS COMMITTED,\n    AVG(REVIEWER_SCORE) AS AVG_SCORE,\n    AVG(DATEDIFF('day', SUBMITTED_DATE, DECISION_DATE)) AS AVG_DAYS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-quarterly": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "QTR",
+          "type": "DATE"
+        },
+        {
+          "name": "REQUESTED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "WON",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AVG_DAYS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    DATE_TRUNC('QUARTER', SUBMITTED_DATE)::DATE AS QTR,\n    ROUND(SUM(REQUESTED_AMOUNT) / 1e6, 2) AS REQUESTED_M,\n    ROUND(SUM(COALESCE(APPROVED_AMOUNT, 0)) / 1e6, 2) AS APPROVED_M,\n    COUNT_IF(STATUS IN ('Approved', 'Paid')) AS WON,\n    ROUND(AVG(DATEDIFF('day', SUBMITTED_DATE, DECISION_DATE)), 0) AS AVG_DAYS,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    1\nORDER BY\n    1",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-status-mix": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "STATUS",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED_M",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    STATUS,\n    COUNT(*) AS GRANTS,\n    ROUND(SUM(REQUESTED_AMOUNT) / 1e6, 2) AS REQUESTED_M\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    STATUS\nORDER BY\n    GRANTS DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-program-drill": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "VALUE_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "WITH base AS (\n    SELECT\n        PROGRAM_AREA,\n        PROGRAM_AREA || ' | ' || INITIATIVE AS INITIATIVE_KEY,\n        INITIATIVE,\n        {{ var('metric') }} AS METRIC_VALUE\n    FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\n    WHERE\n        {{ filter('PROGRAM_AREA') }}\n        AND {{ filter('REGION') }}\n        AND {{ filter('STATUS') }}\n        AND {{ filter('RISK_RATING') }}\n        AND {{ filter('PROGRAM_OFFICER') }}\n        AND {{ filter('SUBMITTED_DATE') }}\n)\nSELECT\n    {{ hierarchy_key('program') }},\n    ROUND(SUM(METRIC_VALUE) / 1e6, 2) AS VALUE_M,\n    COUNT(*) AS GRANTS\nFROM base\nWHERE\n    {{ hierarchy_rows('program') }}\nGROUP BY\n    {{ hierarchy_key('program') }}\nORDER BY\n    VALUE_M DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "variable_bindings": [
+        {
+          "variable_id": "metric"
+        }
+      ],
+      "hierarchy_bindings": [
+        {
+          "hierarchy_id": "program"
+        }
+      ]
+    },
+    "ds-geo-tree": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "WEIGHTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AVG_SCORE",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "WITH base AS (\n    SELECT\n        REGION,\n        REGION || ' | ' || COUNTRY AS COUNTRY_KEY,\n        COUNTRY,\n        REQUESTED_AMOUNT,\n        APPROVED_AMOUNT,\n        WEIGHTED_PIPELINE_AMOUNT,\n        REVIEWER_SCORE\n    FROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\n    WHERE\n        {{ filter('PROGRAM_AREA') }}\n        AND {{ filter('REGION') }}\n        AND {{ filter('STATUS') }}\n        AND {{ filter('RISK_RATING') }}\n        AND {{ filter('PROGRAM_OFFICER') }}\n        AND {{ filter('SUBMITTED_DATE') }}\n)\nSELECT\n    {{ hierarchy_key('geo') }},\n    COUNT(*) AS GRANTS,\n    SUM(REQUESTED_AMOUNT) AS REQUESTED,\n    SUM(COALESCE(APPROVED_AMOUNT, 0)) AS APPROVED,\n    SUM(WEIGHTED_PIPELINE_AMOUNT) AS WEIGHTED,\n    ROUND(AVG(REVIEWER_SCORE), 2) AS AVG_SCORE\nFROM base\nWHERE\n    {{ hierarchy_rows('geo') }}\nGROUP BY\n    {{ hierarchy_key('geo') }}\nORDER BY\n    REQUESTED DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "hierarchy_bindings": [
+        {
+          "hierarchy_id": "geo"
+        }
+      ]
+    },
+    "ds-type-status": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANT_TYPE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "STATUS",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    GRANT_TYPE,\n    STATUS,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    GRANT_TYPE,\n    STATUS",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-officer-metric": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "OFFICER",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "VALUE_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    PROGRAM_OFFICER AS OFFICER,\n    ROUND(SUM({{ var('metric') }}) / 1e6, 2) AS VALUE_M,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    PROGRAM_OFFICER\nORDER BY\n    VALUE_M DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "variable_bindings": [
+        {
+          "variable_id": "metric"
+        }
+      ]
+    },
+    "ds-program-risk": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "PROGRAM_AREA",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "RISK_RATING",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "APPROVED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    PROGRAM_AREA,\n    RISK_RATING,\n    ROUND(SUM(COALESCE(APPROVED_AMOUNT, 0)) / 1e6, 1) AS APPROVED_M,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    PROGRAM_AREA,\n    RISK_RATING",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-opp-kpis": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "OPPS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OPP_AMOUNT",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OPP_WEIGHTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "CLOSED_WON",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OPP_WIN_RATE",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    COUNT(*) AS OPPS,\n    SUM(O.AMOUNT) AS OPP_AMOUNT,\n    SUM(O.AMOUNT * O.PROBABILITY_PCT / 100) AS OPP_WEIGHTED,\n    SUM(IFF(O.STAGE = 'Closed Won', O.AMOUNT, 0)) AS CLOSED_WON,\n    COUNT_IF(O.STAGE = 'Closed Won') / NULLIF(COUNT_IF(O.STAGE IN ('Closed Won', 'Closed Lost')), 0) AS OPP_WIN_RATE\nFROM BP_DEMO.CURATED.DT_OPPS_FLAT O\nLEFT JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON O.GRANT_ID_REF = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-opp-funnel": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "STAGE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "STAGE_ORDER",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OPPS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AMOUNT_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "PROBABILITY",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    O.STAGE,\n    DECODE(O.STAGE, 'Prospecting', 1, 'Cultivation', 2, 'Solicitation', 3, 'Negotiation', 4, 'Committed', 5, 'Closed Won', 6, 'Closed Lost', 7) AS STAGE_ORDER,\n    COUNT(*) AS OPPS,\n    ROUND(SUM(O.AMOUNT) / 1e6, 2) AS AMOUNT_M,\n    ROUND(AVG(O.PROBABILITY_PCT), 0) AS PROBABILITY\nFROM BP_DEMO.CURATED.DT_OPPS_FLAT O\nLEFT JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON O.GRANT_ID_REF = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    O.STAGE\nORDER BY\n    STAGE_ORDER",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-opp-donor-type": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "DONOR_TYPE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "WEIGHTED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "COMMITTED_M",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    O.DONOR_TYPE,\n    ROUND(SUM(IFF(O.STAGE NOT IN ('Closed Won', 'Closed Lost'), O.AMOUNT * O.PROBABILITY_PCT / 100, 0)) / 1e6, 2) AS WEIGHTED_M,\n    ROUND(SUM(IFF(O.STAGE IN ('Committed', 'Closed Won'), O.AMOUNT, 0)) / 1e6, 2) AS COMMITTED_M\nFROM BP_DEMO.CURATED.DT_OPPS_FLAT O\nLEFT JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON O.GRANT_ID_REF = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    O.DONOR_TYPE\nORDER BY\n    COMMITTED_M DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-top-donors": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "DONOR",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "DONOR_TYPE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "AMOUNT_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OPPS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    O.ACCOUNT_NAME AS DONOR,\n    ANY_VALUE(O.DONOR_TYPE) AS DONOR_TYPE,\n    ROUND(SUM(O.AMOUNT) / 1e6, 2) AS AMOUNT_M,\n    COUNT(*) AS OPPS\nFROM BP_DEMO.CURATED.DT_OPPS_FLAT O\nLEFT JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON O.GRANT_ID_REF = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    O.ACCOUNT_NAME\nORDER BY\n    AMOUNT_M DESC\nLIMIT {{ var('donor_top_n') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "variable_bindings": [
+        {
+          "variable_id": "donor_top_n"
+        }
+      ]
+    },
+    "ds-sentiment": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "SENTIMENT_BAND",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    FLOOR(AVG_DONOR_SENTIMENT * 10) / 10 AS SENTIMENT_BAND,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\n    AND AVG_DONOR_SENTIMENT IS NOT NULL\nGROUP BY\n    1\nORDER BY\n    1",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-opp-close": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "CLOSE_MONTH",
+          "type": "DATE"
+        },
+        {
+          "name": "PIPELINE_TYPE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "AMOUNT_M",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    DATE_TRUNC('MONTH', O.CLOSE_DATE)::DATE AS CLOSE_MONTH,\n    IFF(O.STAGE IN ('Committed', 'Closed Won'), 'Committed / won', 'Open (weighted)') AS PIPELINE_TYPE,\n    ROUND(SUM(IFF(O.STAGE IN ('Committed', 'Closed Won'), O.AMOUNT, O.AMOUNT * O.PROBABILITY_PCT / 100)) / 1e6, 2) AS AMOUNT_M\nFROM BP_DEMO.CURATED.DT_OPPS_FLAT O\nLEFT JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON O.GRANT_ID_REF = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\n    AND O.STAGE <> 'Closed Lost'\nGROUP BY\n    1,\n    2\nORDER BY\n    1",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-budget-line": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "BUDGET_LINE",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "BUDGET_M",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    B.BUDGET_LINE,\n    ROUND(SUM(B.BUDGET_AMOUNT) / 1e6, 2) AS BUDGET_M\nFROM BP_DEMO.CURATED.DT_GRANT_BUDGET B\nJOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON B.GRANT_ID = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    B.BUDGET_LINE\nORDER BY\n    BUDGET_M DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-budget-vs-approved": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "PROGRAM_AREA",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "BUDGET_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED_M",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "WITH b AS (\n    SELECT\n        B.GRANT_ID,\n        SUM(B.BUDGET_AMOUNT) AS BUDGET\n    FROM BP_DEMO.CURATED.DT_GRANT_BUDGET B\n    GROUP BY\n        B.GRANT_ID\n)\nSELECT\n    G.PROGRAM_AREA,\n    ROUND(SUM(b.BUDGET) / 1e6, 2) AS BUDGET_M,\n    ROUND(SUM(COALESCE(G.APPROVED_AMOUNT, 0)) / 1e6, 2) AS APPROVED_M\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE G\nJOIN b\n    ON b.GRANT_ID = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    G.PROGRAM_AREA\nORDER BY\n    BUDGET_M DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-budget-variance": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANT_ID",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "ORGANIZATION",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "PROGRAM",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "STATUS",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "BUDGET",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GAP",
+          "type": "NUMBER"
+        },
+        {
+          "name": "FUNDED_PCT",
+          "type": "NUMBER"
+        },
+        {
+          "name": "FLAG",
+          "type": "VARCHAR"
+        }
+      ],
+      "sql": "WITH b AS (\n    SELECT\n        B.GRANT_ID,\n        SUM(B.BUDGET_AMOUNT) AS BUDGET\n    FROM BP_DEMO.CURATED.DT_GRANT_BUDGET B\n    GROUP BY\n        B.GRANT_ID\n)\nSELECT\n    G.GRANT_ID,\n    G.ORGANIZATION_NAME AS ORGANIZATION,\n    G.PROGRAM_AREA AS PROGRAM,\n    G.STATUS,\n    ROUND(b.BUDGET, 0) AS BUDGET,\n    G.APPROVED_AMOUNT AS APPROVED,\n    ROUND(b.BUDGET - G.APPROVED_AMOUNT, 0) AS GAP,\n    G.APPROVED_AMOUNT / NULLIF(b.BUDGET, 0) AS FUNDED_PCT,\n    CASE\n        WHEN G.APPROVED_AMOUNT / NULLIF(b.BUDGET, 0) < 0.7 THEN '▼ Under-funded'\n        WHEN G.APPROVED_AMOUNT / NULLIF(b.BUDGET, 0) < 0.9 THEN '● Partial'\n        ELSE '▲ Fully funded'\n    END AS FLAG\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE G\nJOIN b\n    ON b.GRANT_ID = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\n    AND G.STATUS IN ('Approved', 'Paid')\nORDER BY\n    GAP DESC\nLIMIT {{ var('top_n') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "variable_bindings": [
+        {
+          "variable_id": "top_n"
+        }
+      ]
+    },
+    "ds-budget-tree": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "BUDGET",
+          "type": "NUMBER"
+        },
+        {
+          "name": "LINES",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "WITH base AS (\n    SELECT\n        G.PROGRAM_AREA,\n        G.GRANT_ID,\n        G.GRANT_ID || ' · ' || G.ORGANIZATION_NAME AS GRANT_LABEL,\n        G.GRANT_ID || ' | ' || B.BUDGET_LINE AS LINE_KEY,\n        B.BUDGET_LINE,\n        B.BUDGET_AMOUNT\n    FROM BP_DEMO.CURATED.DT_GRANT_BUDGET B\n    JOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n        ON B.GRANT_ID = G.GRANT_ID\n    WHERE\n        {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n        AND {{ filter('REGION', 'G.REGION') }}\n        AND {{ filter('STATUS', 'G.STATUS') }}\n        AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n        AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n        AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\n)\nSELECT\n    {{ hierarchy_key('budget') }},\n    SUM(BUDGET_AMOUNT) AS BUDGET,\n    COUNT(*) AS LINES\nFROM base\nWHERE\n    {{ hierarchy_rows('budget') }}\nGROUP BY\n    {{ hierarchy_key('budget') }}\nORDER BY\n    BUDGET DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "hierarchy_bindings": [
+        {
+          "hierarchy_id": "budget"
+        }
+      ]
+    },
+    "ds-budget-pivot": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "PROGRAM_AREA",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "PROGRAM_DELIVE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "OVERHEAD",
+          "type": "NUMBER"
+        },
+        {
+          "name": "ADVOCACY_COMMU",
+          "type": "NUMBER"
+        },
+        {
+          "name": "EVALUATION_DAT",
+          "type": "NUMBER"
+        },
+        {
+          "name": "TECHNOLOGY",
+          "type": "NUMBER"
+        },
+        {
+          "name": "PERSONNEL",
+          "type": "NUMBER"
+        },
+        {
+          "name": "TOTAL",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    G.PROGRAM_AREA,\n    SUM(IFF(B.BUDGET_LINE = 'Program Delivery', B.BUDGET_AMOUNT, 0)) AS PROGRAM_DELIVE,\n    SUM(IFF(B.BUDGET_LINE = 'Overhead', B.BUDGET_AMOUNT, 0)) AS OVERHEAD,\n    SUM(IFF(B.BUDGET_LINE = 'Advocacy & Communications', B.BUDGET_AMOUNT, 0)) AS ADVOCACY_COMMU,\n    SUM(IFF(B.BUDGET_LINE = 'Evaluation & Data', B.BUDGET_AMOUNT, 0)) AS EVALUATION_DAT,\n    SUM(IFF(B.BUDGET_LINE = 'Technology', B.BUDGET_AMOUNT, 0)) AS TECHNOLOGY,\n    SUM(IFF(B.BUDGET_LINE = 'Personnel', B.BUDGET_AMOUNT, 0)) AS PERSONNEL,\n    SUM(B.BUDGET_AMOUNT) AS TOTAL\nFROM BP_DEMO.CURATED.DT_GRANT_BUDGET B\nJOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON B.GRANT_ID = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nGROUP BY\n    G.PROGRAM_AREA\nORDER BY\n    TOTAL DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-risk-amounts": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "RISK_RATING",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "REQUESTED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED_M",
+          "type": "NUMBER"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    RISK_RATING,\n    ROUND(SUM(REQUESTED_AMOUNT) / 1e6, 2) AS REQUESTED_M,\n    ROUND(SUM(COALESCE(APPROVED_AMOUNT, 0)) / 1e6, 2) AS APPROVED_M,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    RISK_RATING",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-ai-risk": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "AI_RISK",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AVG_SCORE",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    AI_PRIMARY_RISK AS AI_RISK,\n    COUNT(*) AS GRANTS,\n    ROUND(AVG(REVIEWER_SCORE), 2) AS AVG_SCORE\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    AI_PRIMARY_RISK\nORDER BY\n    GRANTS DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-score-band": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "SCORE_BAND",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "OUTCOME",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "GRANTS",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    TO_VARCHAR(FLOOR(REVIEWER_SCORE)) || '.0–' || TO_VARCHAR(FLOOR(REVIEWER_SCORE)) || '.9' AS SCORE_BAND,\n    CASE\n        WHEN STATUS IN ('Approved', 'Paid') THEN 'Won'\n        WHEN STATUS = 'Declined' THEN 'Declined'\n        ELSE 'Pending'\n    END AS OUTCOME,\n    COUNT(*) AS GRANTS\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\nGROUP BY\n    1,\n    2",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-score-scatter": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANT_ID",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "ORGANIZATION",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "STATUS",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "REVIEWER_SCORE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED_K",
+          "type": "NUMBER"
+        }
+      ],
+      "sql": "SELECT\n    GRANT_ID,\n    ORGANIZATION_NAME AS ORGANIZATION,\n    STATUS,\n    REVIEWER_SCORE,\n    ROUND(REQUESTED_AMOUNT / 1e3, 0) AS REQUESTED_K\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-high-risk-review": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANT_ID",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "ORGANIZATION",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "PROGRAM",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "SCORE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "AI_RISK",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "AI_SUMMARY",
+          "type": "VARCHAR"
+        }
+      ],
+      "sql": "SELECT\n    GRANT_ID,\n    ORGANIZATION_NAME AS ORGANIZATION,\n    PROGRAM_AREA AS PROGRAM,\n    REVIEWER_SCORE AS SCORE,\n    REQUESTED_AMOUNT AS REQUESTED,\n    AI_PRIMARY_RISK AS AI_RISK,\n    AI_REVIEWER_SUMMARY AS AI_SUMMARY\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nWHERE\n    {{ filter('PROGRAM_AREA') }}\n    AND {{ filter('REGION') }}\n    AND {{ filter('STATUS') }}\n    AND {{ filter('RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE') }}\n    AND RISK_RATING = 'High'\n    AND STATUS IN ('Under Review', 'Submitted')\nORDER BY\n    REQUESTED_AMOUNT DESC",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ]
+    },
+    "ds-detail": {
+      "type": "sql",
+      "columns": [
+        {
+          "name": "GRANT_ID",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "ORGANIZATION",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "PROGRAM",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "REGION",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "STATUS_FLAG",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "RISK_FLAG",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "SCORE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "REQUESTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "APPROVED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "PIPELINE",
+          "type": "NUMBER"
+        },
+        {
+          "name": "WEIGHTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "COMMITTED",
+          "type": "NUMBER"
+        },
+        {
+          "name": "SUBMITTED",
+          "type": "DATE"
+        },
+        {
+          "name": "DECIDED",
+          "type": "DATE"
+        },
+        {
+          "name": "AI_RISK",
+          "type": "VARCHAR"
+        }
+      ],
+      "sql": "SELECT\n    F.GRANT_ID,\n    F.ORGANIZATION_NAME AS ORGANIZATION,\n    F.PROGRAM_AREA AS PROGRAM,\n    F.REGION,\n    CASE\n        WHEN F.STATUS IN ('Approved', 'Paid') THEN '▲ ' || F.STATUS\n        WHEN F.STATUS = 'Declined' THEN '▼ ' || F.STATUS\n        ELSE '● ' || F.STATUS\n    END AS STATUS_FLAG,\n    CASE F.RISK_RATING\n        WHEN 'High' THEN '■■■ High'\n        WHEN 'Medium' THEN '■■□ Medium'\n        ELSE '■□□ Low'\n    END AS RISK_FLAG,\n    F.REVIEWER_SCORE AS SCORE,\n    F.REQUESTED_AMOUNT AS REQUESTED,\n    F.APPROVED_AMOUNT AS APPROVED,\n    G.PIPELINE_AMOUNT AS PIPELINE,\n    G.WEIGHTED_PIPELINE_AMOUNT AS WEIGHTED,\n    G.COMMITTED_AMOUNT AS COMMITTED,\n    F.SUBMITTED_DATE AS SUBMITTED,\n    F.DECISION_DATE AS DECIDED,\n    G.AI_PRIMARY_RISK AS AI_RISK\nFROM BP_DEMO.CURATED.DT_GRANTS_FLAT F\nJOIN BP_DEMO.CURATED.DT_GRANT_PIPELINE G\n    ON F.GRANT_ID = G.GRANT_ID\nWHERE\n    {{ filter('PROGRAM_AREA', 'G.PROGRAM_AREA') }}\n    AND {{ filter('REGION', 'G.REGION') }}\n    AND {{ filter('STATUS', 'G.STATUS') }}\n    AND {{ filter('RISK_RATING', 'G.RISK_RATING') }}\n    AND {{ filter('PROGRAM_OFFICER', 'G.PROGRAM_OFFICER') }}\n    AND {{ filter('SUBMITTED_DATE', 'G.SUBMITTED_DATE') }}\nORDER BY\n    G.WEIGHTED_PIPELINE_AMOUNT DESC\nLIMIT {{ var('top_n') }}",
+      "filter_bindings": [
+        {
+          "filter_id": "PROGRAM_AREA"
+        },
+        {
+          "filter_id": "REGION"
+        },
+        {
+          "filter_id": "STATUS"
+        },
+        {
+          "filter_id": "RISK_RATING"
+        },
+        {
+          "filter_id": "PROGRAM_OFFICER"
+        },
+        {
+          "filter_id": "SUBMITTED_DATE"
+        }
+      ],
+      "variable_bindings": [
+        {
+          "variable_id": "top_n"
+        }
+      ]
+    },
+    "ds-PROGRAM_OFFICER-options": {
+      "type": "sql",
+      "sql": "SELECT DISTINCT PROGRAM_OFFICER\nFROM BP_DEMO.CURATED.DT_GRANT_PIPELINE\nORDER BY\n    PROGRAM_OFFICER"
+    }
+  },
+  "layout": {
+    "overview": {
+      "positions": {
+        "ov-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "kpi-grants": {
+          "x": 0,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-orgs": {
+          "x": 2,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-requested": {
+          "x": 4,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-approved": {
+          "x": 6,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-win-rate": {
+          "x": 8,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-avg-score": {
+          "x": 10,
+          "y": 1,
+          "w": 2,
+          "h": 2
+        },
+        "kpi-pipeline": {
+          "x": 0,
+          "y": 3,
+          "w": 3,
+          "h": 2
+        },
+        "kpi-weighted": {
+          "x": 3,
+          "y": 3,
+          "w": 3,
+          "h": 2
+        },
+        "kpi-committed": {
+          "x": 6,
+          "y": 3,
+          "w": 3,
+          "h": 2
+        },
+        "kpi-days": {
+          "x": 9,
+          "y": 3,
+          "w": 3,
+          "h": 2
+        },
+        "quarterly-trend": {
+          "x": 0,
+          "y": 5,
+          "w": 8,
+          "h": 4
+        },
+        "exec-summary": {
+          "x": 8,
+          "y": 5,
+          "w": 4,
+          "h": 4
+        },
+        "decision-days": {
+          "x": 0,
+          "y": 9,
+          "w": 8,
+          "h": 3
+        },
+        "status-donut": {
+          "x": 8,
+          "y": 9,
+          "w": 4,
+          "h": 3
+        }
+      },
+      "meta": {
+        "default": true
+      }
+    },
+    "portfolio": {
+      "positions": {
+        "pf-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "program-drill": {
+          "x": 0,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        },
+        "geo-tree": {
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        },
+        "type-status": {
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 4
+        },
+        "officer-metric": {
+          "x": 6,
+          "y": 5,
+          "w": 6,
+          "h": 4
+        },
+        "program-risk-heatmap": {
+          "x": 0,
+          "y": 9,
+          "w": 12,
+          "h": 4
+        }
+      }
+    },
+    "donors": {
+      "positions": {
+        "dn-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "opp-count": {
+          "x": 0,
+          "y": 1,
+          "w": 3,
+          "h": 2
+        },
+        "opp-amount": {
+          "x": 3,
+          "y": 1,
+          "w": 3,
+          "h": 2
+        },
+        "opp-weighted": {
+          "x": 6,
+          "y": 1,
+          "w": 3,
+          "h": 2
+        },
+        "opp-win-rate": {
+          "x": 9,
+          "y": 1,
+          "w": 3,
+          "h": 2
+        },
+        "opp-funnel": {
+          "x": 0,
+          "y": 3,
+          "w": 6,
+          "h": 4
+        },
+        "opp-donor-type": {
+          "x": 6,
+          "y": 3,
+          "w": 6,
+          "h": 4
+        },
+        "top-donors": {
+          "x": 0,
+          "y": 7,
+          "w": 6,
+          "h": 4
+        },
+        "sentiment-dist": {
+          "x": 6,
+          "y": 7,
+          "w": 6,
+          "h": 4
+        },
+        "opp-close": {
+          "x": 0,
+          "y": 11,
+          "w": 12,
+          "h": 3
+        }
+      }
+    },
+    "budget": {
+      "positions": {
+        "bg-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "budget-line-donut": {
+          "x": 0,
+          "y": 1,
+          "w": 4,
+          "h": 4
+        },
+        "budget-vs-approved": {
+          "x": 4,
+          "y": 1,
+          "w": 8,
+          "h": 4
+        },
+        "budget-pivot": {
+          "x": 0,
+          "y": 5,
+          "w": 12,
+          "h": 3
+        },
+        "budget-tree": {
+          "x": 0,
+          "y": 8,
+          "w": 5,
+          "h": 5
+        },
+        "budget-variance": {
+          "x": 5,
+          "y": 8,
+          "w": 7,
+          "h": 5
+        }
+      }
+    },
+    "risk": {
+      "positions": {
+        "rk-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "risk-amounts": {
+          "x": 0,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        },
+        "ai-risk-combo": {
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        },
+        "score-band": {
+          "x": 0,
+          "y": 5,
+          "w": 6,
+          "h": 4
+        },
+        "score-scatter": {
+          "x": 6,
+          "y": 5,
+          "w": 6,
+          "h": 4
+        },
+        "high-risk-review": {
+          "x": 0,
+          "y": 9,
+          "w": 12,
+          "h": 4
+        }
+      }
+    },
+    "detail": {
+      "positions": {
+        "dt-intro": {
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 1
+        },
+        "grant-detail": {
+          "x": 0,
+          "y": 1,
+          "w": 12,
+          "h": 7
+        }
+      }
+    }
+  },
+  "tabs": [
+    {
+      "tab_id": "overview",
+      "title": "Executive Overview",
+      "tiles": [
+        {
+          "tile_id": "ov-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**Portfolio health at a glance.** Use the filters at the top to narrow every tile on every tab to a program, region, status, risk rating, officer or submission window. All figures are live queries on `BP_DEMO.CURATED`."
+        },
+        {
+          "tile_id": "kpi-grants",
+          "type": "chart",
+          "title": "Grant applications",
+          "datasources": [
+            "ds-kpi-trend"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "GRANTS",
+                  "labelField": "",
+                  "format": "decimal",
+                  "decimals": 0,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": true,
+                  "labelEnabled": false,
+                  "seriesBucketField": "QTR",
+                  "seriesBucketFieldType": "temporal",
+                  "seriesValueField": "Q_GRANTS",
+                  "sparklineColorMode": "fixed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-orgs",
+          "type": "chart",
+          "title": "Organizations",
+          "datasources": [
+            "ds-kpi-totals"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "ORGS",
+                  "labelField": "",
+                  "format": "decimal",
+                  "decimals": 0,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-requested",
+          "type": "chart",
+          "title": "Requested",
+          "datasources": [
+            "ds-kpi-trend"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "REQUESTED",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": true,
+                  "labelEnabled": false,
+                  "seriesBucketField": "QTR",
+                  "seriesBucketFieldType": "temporal",
+                  "seriesValueField": "Q_REQ",
+                  "sparklineColorMode": "fixed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-approved",
+          "type": "chart",
+          "title": "Approved",
+          "datasources": [
+            "ds-kpi-trend"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "APPROVED",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": true,
+                  "labelEnabled": false,
+                  "seriesBucketField": "QTR",
+                  "seriesBucketFieldType": "temporal",
+                  "seriesValueField": "Q_APPR",
+                  "sparklineColorMode": "fixed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-win-rate",
+          "type": "chart",
+          "title": "Win rate (decided)",
+          "datasources": [
+            "ds-kpi-totals"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "WIN_RATE",
+                  "labelField": "",
+                  "format": "percent",
+                  "decimals": 1,
+                  "abbreviate": false,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false,
+                  "thresholds": [
+                    {
+                      "slot": "alert",
+                      "comparator": "lt",
+                      "value": 0.6,
+                      "color": "red"
+                    },
+                    {
+                      "slot": "warn",
+                      "comparator": "between",
+                      "value": 0.6,
+                      "value2": 0.7,
+                      "color": "yellow"
+                    },
+                    {
+                      "slot": "good",
+                      "comparator": "gte",
+                      "value": 0.7,
+                      "color": "green"
+                    }
+                  ],
+                  "thresholdDirection": "higher-is-better"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-avg-score",
+          "type": "chart",
+          "title": "Avg reviewer score",
+          "datasources": [
+            "ds-kpi-totals"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "AVG_SCORE",
+                  "labelField": "",
+                  "format": "decimal",
+                  "decimals": 2,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false,
+                  "thresholds": [
+                    {
+                      "slot": "alert",
+                      "comparator": "lt",
+                      "value": 2.5,
+                      "color": "red"
+                    },
+                    {
+                      "slot": "good",
+                      "comparator": "gte",
+                      "value": 3,
+                      "color": "green"
+                    }
+                  ],
+                  "thresholdDirection": "higher-is-better",
+                  "suffix": " / 5"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-pipeline",
+          "type": "chart",
+          "title": "Open donor pipeline",
+          "datasources": [
+            "ds-kpi-trend"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "PIPELINE",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": true,
+                  "labelEnabled": false,
+                  "seriesBucketField": "QTR",
+                  "seriesBucketFieldType": "temporal",
+                  "seriesValueField": "Q_PIPE",
+                  "sparklineColorMode": "fixed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-weighted",
+          "type": "chart",
+          "title": "Weighted pipeline",
+          "datasources": [
+            "ds-kpi-trend"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "WEIGHTED",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": true,
+                  "labelEnabled": false,
+                  "seriesBucketField": "QTR",
+                  "seriesBucketFieldType": "temporal",
+                  "seriesValueField": "Q_WPIPE",
+                  "sparklineColorMode": "fixed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-committed",
+          "type": "chart",
+          "title": "Committed",
+          "datasources": [
+            "ds-kpi-totals"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "COMMITTED",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "kpi-days",
+          "type": "chart",
+          "title": "Avg days to decision",
+          "datasources": [
+            "ds-kpi-totals"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "AVG_DAYS",
+                  "labelField": "",
+                  "format": "decimal",
+                  "decimals": 0,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false,
+                  "thresholds": [
+                    {
+                      "slot": "good",
+                      "comparator": "lte",
+                      "value": 75,
+                      "color": "green"
+                    },
+                    {
+                      "slot": "warn",
+                      "comparator": "between",
+                      "value": 75,
+                      "value2": 90,
+                      "color": "yellow"
+                    },
+                    {
+                      "slot": "alert",
+                      "comparator": "gt",
+                      "value": 90,
+                      "color": "red"
+                    }
+                  ],
+                  "thresholdDirection": "lower-is-better",
+                  "suffix": " days"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "quarterly-trend",
+          "type": "chart",
+          "title": "Requested vs approved $M and grants won, by submission quarter",
+          "datasources": [
+            "ds-quarterly"
+          ],
+          "spec": {
+            "layer": [
+              {
+                "transform": [
+                  {
+                    "fold": [
+                      "REQUESTED_M",
+                      "APPROVED_M"
+                    ],
+                    "as": [
+                      "SERIES",
+                      "USD_M"
+                    ]
+                  }
+                ],
+                "mark": {
+                  "type": "bar",
+                  "opacity": 0.85
+                },
+                "encoding": {
+                  "x": {
+                    "field": "QTR",
+                    "type": "temporal",
+                    "title": "Submission quarter",
+                    "timeUnit": "yearquarter"
+                  },
+                  "y": {
+                    "field": "USD_M",
+                    "type": "quantitative",
+                    "stack": null,
+                    "title": "USD (M)"
+                  },
+                  "color": {
+                    "field": "SERIES",
+                    "type": "nominal",
+                    "title": "Amount",
+                    "scale": {
+                      "domain": [
+                        "REQUESTED_M",
+                        "APPROVED_M"
+                      ],
+                      "range": [
+                        "#11567F",
+                        "#29B5E8"
+                      ]
+                    }
+                  },
+                  "tooltip": [
+                    {
+                      "field": "QTR",
+                      "type": "temporal",
+                      "timeUnit": "yearquarter",
+                      "title": "Quarter"
+                    },
+                    {
+                      "field": "SERIES",
+                      "type": "nominal"
+                    },
+                    {
+                      "field": "USD_M",
+                      "type": "quantitative",
+                      "title": "$M"
+                    }
+                  ]
+                }
+              },
+              {
+                "mark": {
+                  "type": "line",
+                  "color": "#FF9F36",
+                  "strokeWidth": 3,
+                  "point": true
+                },
+                "encoding": {
+                  "x": {
+                    "field": "QTR",
+                    "type": "temporal",
+                    "timeUnit": "yearquarter"
+                  },
+                  "y": {
+                    "field": "WON",
+                    "type": "quantitative",
+                    "title": "Grants won"
+                  },
+                  "tooltip": [
+                    {
+                      "field": "WON",
+                      "type": "quantitative",
+                      "title": "Grants won"
+                    }
+                  ]
+                }
+              }
+            ],
+            "resolve": {
+              "scale": {
+                "y": "independent"
+              }
+            }
+          },
+          "scope": "quarter_hover",
+          "interactions": [
+            {
+              "trigger": "hover",
+              "operator": "show_crosshair",
+              "targets": [
+                {
+                  "scope": "quarter_hover"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tile_id": "exec-summary",
+          "type": "text",
+          "title": "Executive summary (as at 18 Nov 2026, unfiltered)",
+          "text": "- **$152.2M approved** of $292.5M requested across 653 applications; **73.7% win rate** on decided grants.\n- **Decision backlog:** 163 grants ($66.5M) still Submitted or Under Review; 2026-Q2 cycle time hit 114 days.\n- **Donor pipeline** $88.7M open, $46.3M weighted, $30.6M committed — but $12.5M weighted sits on declined grants.\n- **Execution capacity** is the top AI-flagged risk (41% of grants) and carries the lowest reviewer scores."
+        },
+        {
+          "tile_id": "decision-days",
+          "type": "chart",
+          "title": "Average days to decision, by submission quarter",
+          "datasources": [
+            "ds-quarterly"
+          ],
+          "spec": {
+            "mark": {
+              "type": "area",
+              "line": true,
+              "opacity": 0.35,
+              "color": "#7D44CF"
+            },
+            "encoding": {
+              "x": {
+                "field": "QTR",
+                "type": "temporal",
+                "timeUnit": "yearquarter",
+                "title": "Submission quarter"
+              },
+              "y": {
+                "field": "AVG_DAYS",
+                "type": "quantitative",
+                "title": "Days"
+              },
+              "tooltip": [
+                {
+                  "field": "QTR",
+                  "type": "temporal",
+                  "timeUnit": "yearquarter",
+                  "title": "Quarter"
+                },
+                {
+                  "field": "AVG_DAYS",
+                  "type": "quantitative",
+                  "title": "Days"
+                }
+              ]
+            }
+          },
+          "scope": "quarter_hover",
+          "interactions": [
+            {
+              "trigger": "hover",
+              "operator": "show_crosshair",
+              "targets": [
+                {
+                  "scope": "quarter_hover"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tile_id": "status-donut",
+          "type": "chart",
+          "title": "Status mix (grants)",
+          "datasources": [
+            "ds-status-mix"
+          ],
+          "spec": {
+            "mark": "arc",
+            "encoding": {
+              "theta": {
+                "field": "GRANTS",
+                "type": "quantitative"
+              },
+              "color": {
+                "field": "STATUS",
+                "type": "nominal",
+                "title": "Status",
+                "scale": {
+                  "domain": [
+                    "Paid",
+                    "Approved",
+                    "Under Review",
+                    "Submitted",
+                    "Draft",
+                    "Declined"
+                  ],
+                  "range": [
+                    "#11567F",
+                    "#29B5E8",
+                    "#FF9F36",
+                    "#FFD166",
+                    "#8A99AD",
+                    "#D45B90"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "STATUS",
+                  "type": "nominal"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                },
+                {
+                  "field": "REQUESTED_M",
+                  "type": "quantitative",
+                  "title": "Requested $M"
+                }
+              ]
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartConfig": {
+                  "innerRadius": 55,
+                  "centerTotal": {
+                    "enabled": true
+                  },
+                  "dataLabels": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tab_id": "portfolio",
+      "title": "Portfolio Breakdown",
+      "tiles": [
+        {
+          "tile_id": "pf-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**Where the money goes.** Click a program bar to drill into its initiatives (breadcrumb to return), expand regions to see countries, and switch the **Breakdown metric** control to re-rank by approved, requested, weighted or committed dollars."
+        },
+        {
+          "tile_id": "program-drill",
+          "type": "chart",
+          "title": "Program area → initiative (click to drill; metric control sets the measure, $M)",
+          "datasources": [
+            "ds-program-drill"
+          ],
+          "spec": {
+            "mark": {
+              "type": "bar",
+              "color": "#29B5E8",
+              "cornerRadiusEnd": 3
+            },
+            "encoding": {
+              "y": {
+                "field": "LEVEL_LABEL",
+                "type": "nominal",
+                "sort": "-x",
+                "title": null
+              },
+              "x": {
+                "field": "VALUE_M",
+                "type": "quantitative",
+                "title": "$M (selected metric)"
+              },
+              "tooltip": [
+                {
+                  "field": "LEVEL_LABEL",
+                  "type": "nominal",
+                  "title": "Member"
+                },
+                {
+                  "field": "VALUE_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartConfig": {
+                  "dataLabels": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          },
+          "scope": "program_drill",
+          "interactions": [
+            {
+              "trigger": "select",
+              "fields": [
+                "LEVEL_KEY"
+              ],
+              "operator": "drill_down",
+              "targets": [
+                {
+                  "scope": "program_drill",
+                  "fields": [
+                    "LEVEL_KEY"
+                  ],
+                  "hierarchy": "program"
+                }
+              ]
+            },
+            {
+              "trigger": "select_hierarchy_level",
+              "operator": "drill_up",
+              "targets": [
+                {
+                  "scope": "program_drill",
+                  "hierarchy": "program"
+                }
+              ]
+            },
+            {
+              "trigger": "select_hierarchy_level",
+              "operator": "set_hierarchy_level",
+              "targets": [
+                {
+                  "scope": "program_drill",
+                  "hierarchy": "program"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tile_id": "geo-tree",
+          "type": "table",
+          "title": "Region → country (expand rows)",
+          "datasources": [
+            "ds-geo-tree"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "LEVEL_LABEL",
+                "label": "Geography"
+              },
+              {
+                "field": "GRANTS",
+                "label": "Grants",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true
+                  }
+                }
+              },
+              {
+                "field": "REQUESTED",
+                "label": "Requested",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "APPROVED",
+                "label": "Approved",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "WEIGHTED",
+                "label": "Weighted pipeline",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "AVG_SCORE",
+                "label": "Avg score",
+                "format": {
+                  "number": {
+                    "precision": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tile_id": "type-status",
+          "type": "chart",
+          "title": "Grant type by status (stacked)",
+          "datasources": [
+            "ds-type-status"
+          ],
+          "spec": {
+            "mark": "bar",
+            "encoding": {
+              "x": {
+                "field": "GRANT_TYPE",
+                "type": "nominal",
+                "title": null,
+                "sort": "-y",
+                "axis": {
+                  "labelAngle": -20
+                }
+              },
+              "y": {
+                "field": "GRANTS",
+                "type": "quantitative",
+                "aggregate": "sum",
+                "title": "Grants"
+              },
+              "color": {
+                "field": "STATUS",
+                "type": "nominal",
+                "title": "Status",
+                "scale": {
+                  "domain": [
+                    "Paid",
+                    "Approved",
+                    "Under Review",
+                    "Submitted",
+                    "Draft",
+                    "Declined"
+                  ],
+                  "range": [
+                    "#11567F",
+                    "#29B5E8",
+                    "#FF9F36",
+                    "#FFD166",
+                    "#8A99AD",
+                    "#D45B90"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "GRANT_TYPE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "STATUS",
+                  "type": "nominal"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "officer-metric",
+          "type": "chart",
+          "title": "Program officer ranking ($M, selected metric)",
+          "datasources": [
+            "ds-officer-metric"
+          ],
+          "spec": {
+            "mark": {
+              "type": "bar",
+              "color": "#11567F",
+              "cornerRadiusEnd": 3
+            },
+            "encoding": {
+              "y": {
+                "field": "OFFICER",
+                "type": "nominal",
+                "sort": "-x",
+                "title": null
+              },
+              "x": {
+                "field": "VALUE_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "tooltip": [
+                {
+                  "field": "OFFICER",
+                  "type": "nominal"
+                },
+                {
+                  "field": "VALUE_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "program-risk-heatmap",
+          "type": "chart",
+          "title": "Approved $M heatmap: program area × risk rating",
+          "datasources": [
+            "ds-program-risk"
+          ],
+          "spec": {
+            "layer": [
+              {
+                "mark": "rect",
+                "encoding": {
+                  "x": {
+                    "field": "RISK_RATING",
+                    "type": "ordinal",
+                    "sort": [
+                      "Low",
+                      "Medium",
+                      "High"
+                    ],
+                    "title": "Risk rating"
+                  },
+                  "y": {
+                    "field": "PROGRAM_AREA",
+                    "type": "nominal",
+                    "title": null
+                  },
+                  "color": {
+                    "field": "APPROVED_M",
+                    "type": "quantitative",
+                    "title": "Approved $M",
+                    "scale": {
+                      "scheme": "blues"
+                    }
+                  },
+                  "tooltip": [
+                    {
+                      "field": "PROGRAM_AREA",
+                      "type": "nominal"
+                    },
+                    {
+                      "field": "RISK_RATING",
+                      "type": "nominal"
+                    },
+                    {
+                      "field": "APPROVED_M",
+                      "type": "quantitative",
+                      "title": "Approved $M"
+                    },
+                    {
+                      "field": "GRANTS",
+                      "type": "quantitative"
+                    }
+                  ]
+                }
+              },
+              {
+                "mark": {
+                  "type": "text",
+                  "fontWeight": "bold"
+                },
+                "encoding": {
+                  "x": {
+                    "field": "RISK_RATING",
+                    "type": "ordinal",
+                    "sort": [
+                      "Low",
+                      "Medium",
+                      "High"
+                    ]
+                  },
+                  "y": {
+                    "field": "PROGRAM_AREA",
+                    "type": "nominal"
+                  },
+                  "text": {
+                    "field": "APPROVED_M",
+                    "type": "quantitative",
+                    "format": ".1f"
+                  },
+                  "color": {
+                    "condition": {
+                      "test": "datum.APPROVED_M > 12",
+                      "value": "white"
+                    },
+                    "value": "#1f2937"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tab_id": "donors",
+      "title": "Donor Opportunities",
+      "tiles": [
+        {
+          "tile_id": "dn-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**Funding we can expect from donors.** Opportunities from `DT_OPPS_FLAT`, joined to grants. Note: 65 opportunities ($14.0M) are not linked to any grant and drop out once a grant-level filter is applied."
+        },
+        {
+          "tile_id": "opp-count",
+          "type": "chart",
+          "title": "Opportunities",
+          "datasources": [
+            "ds-opp-kpis"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "OPPS",
+                  "labelField": "",
+                  "format": "decimal",
+                  "decimals": 0,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "opp-amount",
+          "type": "chart",
+          "title": "Total opportunity value",
+          "datasources": [
+            "ds-opp-kpis"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "OPP_AMOUNT",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "opp-weighted",
+          "type": "chart",
+          "title": "Probability-weighted value",
+          "datasources": [
+            "ds-opp-kpis"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "OPP_WEIGHTED",
+                  "labelField": "",
+                  "format": "currency",
+                  "decimals": 1,
+                  "abbreviate": true,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "opp-win-rate",
+          "type": "chart",
+          "title": "Donor close rate",
+          "datasources": [
+            "ds-opp-kpis"
+          ],
+          "spec": {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {
+              "name": "values"
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartType": "scorecard",
+                "scorecardConfig": {
+                  "currentColumn": "OPP_WIN_RATE",
+                  "labelField": "",
+                  "format": "percent",
+                  "decimals": 1,
+                  "abbreviate": false,
+                  "deltaColorMode": "increasesBetter",
+                  "comparisonMode": "manual",
+                  "comparisonEnabled": false,
+                  "sparklineEnabled": false,
+                  "labelEnabled": false,
+                  "thresholds": [
+                    {
+                      "slot": "alert",
+                      "comparator": "lt",
+                      "value": 0.6,
+                      "color": "red"
+                    },
+                    {
+                      "slot": "warn",
+                      "comparator": "between",
+                      "value": 0.6,
+                      "value2": 0.7,
+                      "color": "yellow"
+                    },
+                    {
+                      "slot": "good",
+                      "comparator": "gte",
+                      "value": 0.7,
+                      "color": "green"
+                    }
+                  ],
+                  "thresholdDirection": "higher-is-better"
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "opp-funnel",
+          "type": "chart",
+          "title": "Stage progression funnel ($M by stage)",
+          "datasources": [
+            "ds-opp-funnel"
+          ],
+          "spec": {
+            "mark": {
+              "type": "bar",
+              "cornerRadiusEnd": 3
+            },
+            "encoding": {
+              "y": {
+                "field": "STAGE",
+                "type": "nominal",
+                "sort": {
+                  "field": "STAGE_ORDER",
+                  "order": "ascending"
+                },
+                "title": null
+              },
+              "x": {
+                "field": "AMOUNT_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "color": {
+                "field": "STAGE_ORDER",
+                "type": "quantitative",
+                "legend": null,
+                "scale": {
+                  "range": [
+                    "#BDE8F7",
+                    "#11567F"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "STAGE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "OPPS",
+                  "type": "quantitative",
+                  "title": "Opportunities"
+                },
+                {
+                  "field": "AMOUNT_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                },
+                {
+                  "field": "PROBABILITY",
+                  "type": "quantitative",
+                  "title": "Avg probability %"
+                }
+              ]
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartConfig": {
+                  "dataLabels": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "opp-donor-type",
+          "type": "chart",
+          "title": "Weighted open vs committed, by donor type ($M)",
+          "datasources": [
+            "ds-opp-donor-type"
+          ],
+          "spec": {
+            "transform": [
+              {
+                "fold": [
+                  "WEIGHTED_M",
+                  "COMMITTED_M"
+                ],
+                "as": [
+                  "MEASURE",
+                  "USD_M"
+                ]
+              }
+            ],
+            "mark": "bar",
+            "encoding": {
+              "y": {
+                "field": "DONOR_TYPE",
+                "type": "nominal",
+                "title": null
+              },
+              "yOffset": {
+                "field": "MEASURE",
+                "type": "nominal"
+              },
+              "x": {
+                "field": "USD_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "color": {
+                "field": "MEASURE",
+                "type": "nominal",
+                "title": "Measure",
+                "scale": {
+                  "domain": [
+                    "WEIGHTED_M",
+                    "COMMITTED_M"
+                  ],
+                  "range": [
+                    "#FF9F36",
+                    "#11567F"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "DONOR_TYPE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "MEASURE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "USD_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "top-donors",
+          "type": "chart",
+          "title": "Top donors by opportunity value (Top N control)",
+          "datasources": [
+            "ds-top-donors"
+          ],
+          "spec": {
+            "mark": {
+              "type": "bar",
+              "cornerRadiusEnd": 3
+            },
+            "encoding": {
+              "y": {
+                "field": "DONOR",
+                "type": "nominal",
+                "sort": "-x",
+                "title": null
+              },
+              "x": {
+                "field": "AMOUNT_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "color": {
+                "field": "DONOR_TYPE",
+                "type": "nominal",
+                "title": "Donor type"
+              },
+              "tooltip": [
+                {
+                  "field": "DONOR",
+                  "type": "nominal"
+                },
+                {
+                  "field": "DONOR_TYPE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "AMOUNT_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                },
+                {
+                  "field": "OPPS",
+                  "type": "quantitative"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "sentiment-dist",
+          "type": "chart",
+          "title": "Donor sentiment distribution (grants by avg sentiment)",
+          "datasources": [
+            "ds-sentiment"
+          ],
+          "spec": {
+            "mark": {
+              "type": "bar",
+              "color": "#5FBF8F",
+              "binSpacing": 1
+            },
+            "encoding": {
+              "x": {
+                "field": "SENTIMENT_BAND",
+                "type": "ordinal",
+                "title": "Avg donor sentiment (−1 to +1, 0.1 bands)"
+              },
+              "y": {
+                "field": "GRANTS",
+                "type": "quantitative",
+                "title": "Grants"
+              },
+              "tooltip": [
+                {
+                  "field": "SENTIMENT_BAND",
+                  "type": "quantitative",
+                  "title": "Band from"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "opp-close",
+          "type": "chart",
+          "title": "Expected close timeline ($M by close month)",
+          "datasources": [
+            "ds-opp-close"
+          ],
+          "spec": {
+            "mark": {
+              "type": "area",
+              "opacity": 0.8
+            },
+            "encoding": {
+              "x": {
+                "field": "CLOSE_MONTH",
+                "type": "temporal",
+                "title": "Close month"
+              },
+              "y": {
+                "field": "AMOUNT_M",
+                "type": "quantitative",
+                "stack": "zero",
+                "title": "$M"
+              },
+              "color": {
+                "field": "PIPELINE_TYPE",
+                "type": "nominal",
+                "title": null,
+                "scale": {
+                  "range": [
+                    "#11567F",
+                    "#FF9F36"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "CLOSE_MONTH",
+                  "type": "temporal",
+                  "title": "Month"
+                },
+                {
+                  "field": "PIPELINE_TYPE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "AMOUNT_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tab_id": "budget",
+      "title": "Budget & Financials",
+      "tiles": [
+        {
+          "tile_id": "bg-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**How grant budgets are allocated and how much of each budget we fund.** Budget lines come from `DT_GRANT_BUDGET` (6 lines per grant). The variance table shows the approved grants with the largest gap between budget and approved amount."
+        },
+        {
+          "tile_id": "budget-line-donut",
+          "type": "chart",
+          "title": "Budget by line item ($M)",
+          "datasources": [
+            "ds-budget-line"
+          ],
+          "spec": {
+            "mark": "arc",
+            "encoding": {
+              "theta": {
+                "field": "BUDGET_M",
+                "type": "quantitative"
+              },
+              "color": {
+                "field": "BUDGET_LINE",
+                "type": "nominal",
+                "title": "Budget line"
+              },
+              "tooltip": [
+                {
+                  "field": "BUDGET_LINE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "BUDGET_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                }
+              ]
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartConfig": {
+                  "innerRadius": 55,
+                  "centerTotal": {
+                    "enabled": true
+                  },
+                  "dataLabels": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "budget-vs-approved",
+          "type": "chart",
+          "title": "Total budget vs approved by program ($M)",
+          "datasources": [
+            "ds-budget-vs-approved"
+          ],
+          "spec": {
+            "transform": [
+              {
+                "fold": [
+                  "BUDGET_M",
+                  "APPROVED_M"
+                ],
+                "as": [
+                  "MEASURE",
+                  "USD_M"
+                ]
+              }
+            ],
+            "mark": "bar",
+            "encoding": {
+              "x": {
+                "field": "PROGRAM_AREA",
+                "type": "nominal",
+                "title": null
+              },
+              "xOffset": {
+                "field": "MEASURE",
+                "type": "nominal"
+              },
+              "y": {
+                "field": "USD_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "color": {
+                "field": "MEASURE",
+                "type": "nominal",
+                "title": "Measure",
+                "scale": {
+                  "domain": [
+                    "BUDGET_M",
+                    "APPROVED_M"
+                  ],
+                  "range": [
+                    "#8A99AD",
+                    "#29B5E8"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "PROGRAM_AREA",
+                  "type": "nominal"
+                },
+                {
+                  "field": "MEASURE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "USD_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "budget-pivot",
+          "type": "table",
+          "title": "Pivot: program area × budget line ($)",
+          "datasources": [
+            "ds-budget-pivot"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "PROGRAM_AREA"
+              },
+              {
+                "field": "PROGRAM_DELIVE",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "OVERHEAD",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "ADVOCACY_COMMU",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "EVALUATION_DAT",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "TECHNOLOGY",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "PERSONNEL",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "TOTAL",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              }
+            ],
+            "sort": [
+              {
+                "field": "TOTAL",
+                "direction": "desc"
+              }
+            ]
+          }
+        },
+        {
+          "tile_id": "budget-tree",
+          "type": "table",
+          "title": "Program → grant → budget line (expand rows)",
+          "datasources": [
+            "ds-budget-tree"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "LEVEL_LABEL",
+                "label": "Program / grant / line"
+              },
+              {
+                "field": "BUDGET",
+                "label": "Budget",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "LINES",
+                "label": "Budget lines",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tile_id": "budget-variance",
+          "type": "table",
+          "title": "Budget variance on approved grants: largest gaps (Top N control)",
+          "datasources": [
+            "ds-budget-variance"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "GRANT_ID"
+              },
+              {
+                "field": "ORGANIZATION"
+              },
+              {
+                "field": "PROGRAM"
+              },
+              {
+                "field": "STATUS"
+              },
+              {
+                "field": "BUDGET",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "APPROVED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "GAP",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "FUNDED_PCT",
+                "format": {
+                  "number": {
+                    "style": "percent",
+                    "precision": 0
+                  }
+                }
+              },
+              {
+                "field": "FLAG"
+              }
+            ],
+            "sort": [
+              {
+                "field": "GAP",
+                "direction": "desc"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tab_id": "risk",
+      "title": "Risk & AI Insights",
+      "tiles": [
+        {
+          "tile_id": "rk-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**Is risk being managed, and what does the AI reviewer flag?** `AI_PRIMARY_RISK` and `AI_REVIEWER_SUMMARY` are generated by Cortex AI from free-text reviewer notes. Click a status in the scatter legend to highlight it."
+        },
+        {
+          "tile_id": "risk-amounts",
+          "type": "chart",
+          "title": "Requested vs approved by risk rating ($M)",
+          "datasources": [
+            "ds-risk-amounts"
+          ],
+          "spec": {
+            "transform": [
+              {
+                "fold": [
+                  "REQUESTED_M",
+                  "APPROVED_M"
+                ],
+                "as": [
+                  "MEASURE",
+                  "USD_M"
+                ]
+              }
+            ],
+            "mark": "bar",
+            "encoding": {
+              "x": {
+                "field": "RISK_RATING",
+                "type": "nominal",
+                "sort": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ],
+                "title": "Risk rating"
+              },
+              "xOffset": {
+                "field": "MEASURE",
+                "type": "nominal"
+              },
+              "y": {
+                "field": "USD_M",
+                "type": "quantitative",
+                "title": "$M"
+              },
+              "color": {
+                "field": "MEASURE",
+                "type": "nominal",
+                "title": "Measure",
+                "scale": {
+                  "domain": [
+                    "REQUESTED_M",
+                    "APPROVED_M"
+                  ],
+                  "range": [
+                    "#11567F",
+                    "#29B5E8"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "RISK_RATING",
+                  "type": "nominal"
+                },
+                {
+                  "field": "MEASURE",
+                  "type": "nominal"
+                },
+                {
+                  "field": "USD_M",
+                  "type": "quantitative",
+                  "title": "$M"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tile_id": "ai-risk-combo",
+          "type": "chart",
+          "title": "AI-identified primary risk: grants (bars) vs avg reviewer score (line)",
+          "datasources": [
+            "ds-ai-risk"
+          ],
+          "spec": {
+            "layer": [
+              {
+                "mark": {
+                  "type": "bar",
+                  "color": "#7D44CF"
+                },
+                "encoding": {
+                  "x": {
+                    "field": "AI_RISK",
+                    "type": "nominal",
+                    "sort": "-y",
+                    "title": null,
+                    "axis": {
+                      "labelAngle": -20
+                    }
+                  },
+                  "y": {
+                    "field": "GRANTS",
+                    "type": "quantitative",
+                    "title": "Grants"
+                  },
+                  "tooltip": [
+                    {
+                      "field": "AI_RISK",
+                      "type": "nominal"
+                    },
+                    {
+                      "field": "GRANTS",
+                      "type": "quantitative"
+                    },
+                    {
+                      "field": "AVG_SCORE",
+                      "type": "quantitative",
+                      "title": "Avg score"
+                    }
+                  ]
+                }
+              },
+              {
+                "mark": {
+                  "type": "line",
+                  "color": "#FF9F36",
+                  "strokeWidth": 3,
+                  "point": true
+                },
+                "encoding": {
+                  "x": {
+                    "field": "AI_RISK",
+                    "type": "nominal",
+                    "sort": "-y"
+                  },
+                  "y": {
+                    "field": "AVG_SCORE",
+                    "type": "quantitative",
+                    "title": "Avg reviewer score",
+                    "scale": {
+                      "domain": [
+                        1,
+                        5
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "resolve": {
+              "scale": {
+                "y": "independent"
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "score-band",
+          "type": "chart",
+          "title": "Outcome by reviewer score band (stacked)",
+          "datasources": [
+            "ds-score-band"
+          ],
+          "spec": {
+            "mark": "bar",
+            "encoding": {
+              "x": {
+                "field": "SCORE_BAND",
+                "type": "ordinal",
+                "title": "Reviewer score"
+              },
+              "y": {
+                "field": "GRANTS",
+                "type": "quantitative",
+                "title": "Grants"
+              },
+              "color": {
+                "field": "OUTCOME",
+                "type": "nominal",
+                "title": "Outcome",
+                "scale": {
+                  "domain": [
+                    "Won",
+                    "Pending",
+                    "Declined"
+                  ],
+                  "range": [
+                    "#5FBF8F",
+                    "#FFD166",
+                    "#D45B90"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "SCORE_BAND",
+                  "type": "ordinal"
+                },
+                {
+                  "field": "OUTCOME",
+                  "type": "nominal"
+                },
+                {
+                  "field": "GRANTS",
+                  "type": "quantitative"
+                }
+              ]
+            },
+            "usermeta": {
+              "snowflake": {
+                "chartConfig": {
+                  "dataLabels": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "tile_id": "score-scatter",
+          "type": "chart",
+          "title": "Reviewer score vs requested amount ($K), by status",
+          "datasources": [
+            "ds-score-scatter"
+          ],
+          "spec": {
+            "mark": {
+              "type": "point",
+              "filled": true,
+              "opacity": 0.7,
+              "size": 45
+            },
+            "encoding": {
+              "x": {
+                "field": "REVIEWER_SCORE",
+                "type": "quantitative",
+                "title": "Reviewer score"
+              },
+              "y": {
+                "field": "REQUESTED_K",
+                "type": "quantitative",
+                "title": "Requested ($K)"
+              },
+              "color": {
+                "field": "STATUS",
+                "type": "nominal",
+                "title": "Status",
+                "scale": {
+                  "domain": [
+                    "Paid",
+                    "Approved",
+                    "Under Review",
+                    "Submitted",
+                    "Draft",
+                    "Declined"
+                  ],
+                  "range": [
+                    "#11567F",
+                    "#29B5E8",
+                    "#FF9F36",
+                    "#FFD166",
+                    "#8A99AD",
+                    "#D45B90"
+                  ]
+                }
+              },
+              "tooltip": [
+                {
+                  "field": "GRANT_ID",
+                  "type": "nominal"
+                },
+                {
+                  "field": "ORGANIZATION",
+                  "type": "nominal"
+                },
+                {
+                  "field": "STATUS",
+                  "type": "nominal"
+                },
+                {
+                  "field": "REVIEWER_SCORE",
+                  "type": "quantitative"
+                },
+                {
+                  "field": "REQUESTED_K",
+                  "type": "quantitative",
+                  "title": "$K"
+                }
+              ]
+            }
+          },
+          "scope": "status_highlight",
+          "interactions": [
+            {
+              "trigger": "select",
+              "fields": [
+                "STATUS"
+              ],
+              "operator": "set_selection",
+              "targets": [
+                {
+                  "scope": "status_highlight",
+                  "fields": [
+                    "STATUS"
+                  ],
+                  "selection": "STATUS"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tile_id": "high-risk-review",
+          "type": "table",
+          "title": "High-risk grants awaiting decision, with AI reviewer summary",
+          "datasources": [
+            "ds-high-risk-review"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "GRANT_ID"
+              },
+              {
+                "field": "ORGANIZATION"
+              },
+              {
+                "field": "PROGRAM"
+              },
+              {
+                "field": "SCORE",
+                "format": {
+                  "number": {
+                    "precision": 1
+                  }
+                }
+              },
+              {
+                "field": "REQUESTED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "AI_RISK"
+              },
+              {
+                "field": "AI_SUMMARY"
+              }
+            ],
+            "sort": [
+              {
+                "field": "REQUESTED",
+                "direction": "desc"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tab_id": "detail",
+      "title": "Detail",
+      "tiles": [
+        {
+          "tile_id": "dt-intro",
+          "type": "text",
+          "title": "About this view",
+          "text": "**Grant-level drill-through.** The top grants by weighted donor pipeline (default 25; use **Top N grants** to change). Click any header to re-sort. Markers: ▲ won, ▼ declined, ● in progress; ■ bars show risk level."
+        },
+        {
+          "tile_id": "grant-detail",
+          "type": "table",
+          "title": "Top grants by weighted donor pipeline",
+          "datasources": [
+            "ds-detail"
+          ],
+          "spec": {
+            "columns": [
+              {
+                "field": "GRANT_ID"
+              },
+              {
+                "field": "ORGANIZATION"
+              },
+              {
+                "field": "PROGRAM"
+              },
+              {
+                "field": "REGION"
+              },
+              {
+                "field": "STATUS_FLAG"
+              },
+              {
+                "field": "RISK_FLAG"
+              },
+              {
+                "field": "SCORE",
+                "format": {
+                  "number": {
+                    "precision": 1
+                  }
+                }
+              },
+              {
+                "field": "REQUESTED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "APPROVED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "PIPELINE",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "WEIGHTED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "COMMITTED",
+                "format": {
+                  "number": {
+                    "precision": 0,
+                    "thousands_sep": true,
+                    "prefix": "$"
+                  }
+                }
+              },
+              {
+                "field": "SUBMITTED",
+                "format": {
+                  "date": {
+                    "date_format": "ISO_DATE"
+                  }
+                }
+              },
+              {
+                "field": "DECIDED",
+                "format": {
+                  "date": {
+                    "date_format": "ISO_DATE"
+                  }
+                }
+              },
+              {
+                "field": "AI_RISK"
+              }
+            ],
+            "sort": [
+              {
+                "field": "WEIGHTED",
+                "direction": "desc"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
